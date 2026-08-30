@@ -1,0 +1,7 @@
+﻿rgfont 1
+# CR/LF and slash comments are also accepted by the parser.
+atlas 8 8 // atlas
+line_height 8
+fallback 63
+glyph 32 8 8 0 0 0 0 4
+glyph 63 0 0 1 1 0 0 1

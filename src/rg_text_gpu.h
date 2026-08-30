@@ -1,0 +1,763 @@
+// rg_text_gpu - SDL_GPU renderer for rg_text bitmap fonts
+//
+// Part of the Reverse Gravity (rg_) libraries.
+// C99-compatible optional SDL_GPU helper for uploading a bitmap font atlas and
+// drawing rg_text quads.
+//
+// NOTES:
+//   - This header depends on SDL3 GPU and rg_gpu upload rings.
+//   - The caller still owns command buffers, copy passes, render passes, projection
+//     uniforms, frame ordering, and scissor state.
+//   - Shaders must consume vertex attributes:
+//       location 0: float3 position
+//       location 1: float4 color
+//       location 2: float2 uv
+//   - Compiled shaders are loaded through rg_gpu from the supplied shader root.
+//   - All functions have internal linkage and work in unity builds.
+//
+// Author: Steven Wendel (superwendel)
+
+#ifndef RG_TEXT_GPU_H
+#define RG_TEXT_GPU_H
+
+#include "rg_text.h"
+#include "rg_gpu.h"
+
+#include <SDL3/SDL.h>
+#include <stddef.h>
+#include <string.h>
+
+// =============================================================================
+// CONFIGURATION
+// =============================================================================
+
+#ifndef RG_TEXT_GPU_ASSERT
+#include <assert.h>
+#define RG_TEXT_GPU_ASSERT(x) assert(x)
+#endif
+
+#ifndef RG_TEXT_GPU_DEFAULT_MAX_QUADS
+#define RG_TEXT_GPU_DEFAULT_MAX_QUADS 8192u
+#endif
+
+// =============================================================================
+// TYPE DEFINITIONS
+// =============================================================================
+
+typedef struct RgTextGpuVertex
+{
+	f32 x;
+	f32 y;
+	f32 z;
+	f32 r;
+	f32 g;
+	f32 b;
+	f32 a;
+	f32 u;
+	f32 v;
+} RgTextGpuVertex;
+
+typedef struct RgTextGpuDesc
+{
+	SDL_GPUDevice* device;
+	SDL_GPUTextureFormat target_format;
+	const char* shader_root;
+	const void* atlas_pixels_rgba8;
+	u32 atlas_width;
+	u32 atlas_height;
+	u32 max_quads;
+	SDL_GPUFilter min_filter;
+	SDL_GPUFilter mag_filter;
+} RgTextGpuDesc;
+
+typedef struct RgTextGpuUpload
+{
+	RgGpuUploadSlice vertices;
+	RgGpuUploadSlice indices;
+} RgTextGpuUpload;
+
+typedef struct RgTextGpuRenderStats
+{
+	u32 quads;
+	u32 indices;
+	u32 draw_calls;
+} RgTextGpuRenderStats;
+
+typedef struct RgTextGpuUniforms
+{
+	f32 projection[16];
+	f32 transform[16];
+} RgTextGpuUniforms;
+
+typedef struct RgTextGpuRenderer
+{
+	SDL_GPUDevice* device;
+	SDL_GPUGraphicsPipeline* pipeline;
+	SDL_GPUBuffer* vertex_buffer;
+	SDL_GPUBuffer* index_buffer;
+	SDL_GPUTexture* atlas_texture;
+	SDL_GPUSampler* sampler;
+	RgTextGpuVertex* vertices;
+	u32* indices;
+	RgTextQuad* scratch_quads;
+	u32 quad_count;
+	u32 quad_capacity;
+	u32 vertex_count;
+	u32 index_count;
+	u32 atlas_width;
+	u32 atlas_height;
+} RgTextGpuRenderer;
+
+// =============================================================================
+// PUBLIC API
+// =============================================================================
+
+/**
+ * @brief Create an SDL_GPU text renderer.
+ * @param renderer Renderer to initialize
+ * @param desc Create descriptor
+ * @return 1 on success, 0 on failure
+ */
+RGINLINE int rg_text_gpu_create(RgTextGpuRenderer* renderer, const RgTextGpuDesc* desc);
+
+/**
+ * @brief Destroy an SDL_GPU text renderer.
+ * @param renderer Renderer to destroy
+ */
+RGINLINE void rg_text_gpu_destroy(RgTextGpuRenderer* renderer);
+
+/**
+ * @brief Upload the atlas pixels supplied at creation time.
+ * @param renderer Renderer
+ * @param pixels RGBA8 pixels
+ * @param width Atlas width
+ * @param height Atlas height
+ * @return 1 on success, 0 on failure
+ */
+RGINLINE int rg_text_gpu_upload_atlas(RgTextGpuRenderer* renderer,
+                                      const void* pixels,
+                                      u32 width,
+                                      u32 height);
+
+/**
+ * @brief Clear queued text for a new frame.
+ * @param renderer Renderer
+ */
+RGINLINE void rg_text_gpu_begin(RgTextGpuRenderer* renderer);
+
+/**
+ * @brief Queue UTF-8 text.
+ * @param renderer Renderer
+ * @param font Font metrics
+ * @param text UTF-8 bytes
+ * @param text_size Byte length
+ * @param x Top-left x
+ * @param y Top-left y
+ * @param scale Pixel scale
+ * @param color Vertex color
+ * @return Number of glyph quads queued
+ */
+RGINLINE size_t rg_text_gpu_queue(RgTextGpuRenderer* renderer,
+                                  const RgTextFont* font,
+                                  const char* text,
+                                  size_t text_size,
+                                  f32 x,
+                                  f32 y,
+                                  f32 scale,
+                                  RgTextColor color);
+
+/**
+ * @brief Queue text using a full rg_text build descriptor.
+ * @param renderer Renderer
+ * @param desc Text build descriptor
+ * @return Number of glyph quads queued
+ */
+RGINLINE size_t rg_text_gpu_queue_ex(RgTextGpuRenderer* renderer, const RgTextBuildDesc* desc);
+
+/**
+ * @brief Queue prebuilt text quads.
+ * @param renderer Renderer
+ * @param quads Quads
+ * @param quad_count Quad count
+ * @return Number of quads queued
+ */
+RGINLINE size_t rg_text_gpu_queue_quads(RgTextGpuRenderer* renderer,
+                                        const RgTextQuad* quads,
+                                        size_t quad_count);
+
+/**
+ * @brief Stage queued vertices and indices into an upload ring.
+ * @param renderer Renderer
+ * @param ring Mapped upload ring
+ * @param out_upload Upload slices
+ * @return 1 when data was staged, 0 when nothing was queued or capacity failed
+ */
+RGINLINE int rg_text_gpu_stage_upload(RgTextGpuRenderer* renderer,
+                                      RgGpuUploadRing* ring,
+                                      RgTextGpuUpload* out_upload);
+
+/**
+ * @brief Encode staged vertex/index uploads into a copy pass.
+ * @param renderer Renderer
+ * @param copy Copy pass
+ * @param ring Upload ring
+ * @param upload Upload slices
+ */
+RGINLINE void rg_text_gpu_encode_upload(RgTextGpuRenderer* renderer,
+                                        SDL_GPUCopyPass* copy,
+                                        const RgGpuUploadRing* ring,
+                                        const RgTextGpuUpload* upload);
+
+/**
+ * @brief Draw all queued text. Call after rg_text_gpu_encode_upload.
+ * @param renderer Renderer
+ * @param command_buffer Command buffer for pushing uniforms
+ * @param pass Render pass
+ * @param uniforms Projection and model transform matrices
+ * @return Render stats
+ */
+RGINLINE RgTextGpuRenderStats rg_text_gpu_flush(RgTextGpuRenderer* renderer,
+                                                 SDL_GPUCommandBuffer* command_buffer,
+                                                 SDL_GPURenderPass* pass,
+                                                 const RgTextGpuUniforms* uniforms);
+
+// =============================================================================
+// IMPLEMENTATION
+// =============================================================================
+
+RGINLINE int rg_text_gpu_create_pipeline(RgTextGpuRenderer* renderer,
+                                         const RgTextGpuDesc* desc,
+                                         SDL_GPUShader* vertex_shader,
+                                         SDL_GPUShader* fragment_shader)
+{
+	SDL_GPUVertexBufferDescription vb_desc;
+	memset(&vb_desc, 0, sizeof(vb_desc));
+	vb_desc.slot = 0;
+	vb_desc.input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+	vb_desc.instance_step_rate = 0;
+	vb_desc.pitch = sizeof(RgTextGpuVertex);
+
+	SDL_GPUVertexAttribute attrs[3];
+	memset(attrs, 0, sizeof(attrs));
+	attrs[0].buffer_slot = 0;
+	attrs[0].location = 0;
+	attrs[0].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3;
+	attrs[0].offset = 0;
+	attrs[1].buffer_slot = 0;
+	attrs[1].location = 1;
+	attrs[1].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4;
+	attrs[1].offset = sizeof(f32) * 3u;
+	attrs[2].buffer_slot = 0;
+	attrs[2].location = 2;
+	attrs[2].format = SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2;
+	attrs[2].offset = sizeof(f32) * 7u;
+
+	SDL_GPUVertexInputState vi;
+	memset(&vi, 0, sizeof(vi));
+	vi.num_vertex_buffers = 1;
+	vi.vertex_buffer_descriptions = &vb_desc;
+	vi.num_vertex_attributes = 3;
+	vi.vertex_attributes = attrs;
+
+	SDL_GPUColorTargetBlendState blend;
+	memset(&blend, 0, sizeof(blend));
+	blend.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+	blend.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+	blend.color_blend_op = SDL_GPU_BLENDOP_ADD;
+	blend.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+	blend.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+	blend.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
+	blend.color_write_mask = SDL_GPU_COLORCOMPONENT_R |
+	                         SDL_GPU_COLORCOMPONENT_G |
+	                         SDL_GPU_COLORCOMPONENT_B |
+	                         SDL_GPU_COLORCOMPONENT_A;
+	blend.enable_blend = true;
+	blend.enable_color_write_mask = true;
+
+	SDL_GPUColorTargetDescription color_target;
+	memset(&color_target, 0, sizeof(color_target));
+	color_target.format = desc->target_format;
+	color_target.blend_state = blend;
+
+	SDL_GPUGraphicsPipelineCreateInfo pipeline_info;
+	memset(&pipeline_info, 0, sizeof(pipeline_info));
+	pipeline_info.target_info.num_color_targets = 1;
+	pipeline_info.target_info.color_target_descriptions = &color_target;
+	pipeline_info.primitive_type = SDL_GPU_PRIMITIVETYPE_TRIANGLELIST;
+	pipeline_info.vertex_shader = vertex_shader;
+	pipeline_info.fragment_shader = fragment_shader;
+	pipeline_info.vertex_input_state = vi;
+
+	renderer->pipeline = SDL_CreateGPUGraphicsPipeline(renderer->device, &pipeline_info);
+	return renderer->pipeline != NULL ? 1 : 0;
+}
+
+RGINLINE int rg_text_gpu_create(RgTextGpuRenderer* renderer, const RgTextGpuDesc* desc)
+{
+	RG_TEXT_GPU_ASSERT(renderer != NULL);
+	RG_TEXT_GPU_ASSERT(desc != NULL);
+
+	if (!renderer || !desc || !desc->device || !desc->shader_root ||
+	    desc->target_format == SDL_GPU_TEXTUREFORMAT_INVALID ||
+	    desc->atlas_width == 0u || desc->atlas_height == 0u)
+	{
+		return 0;
+	}
+
+	memset(renderer, 0, sizeof(*renderer));
+	renderer->device = desc->device;
+	renderer->quad_capacity = desc->max_quads ? desc->max_quads : RG_TEXT_GPU_DEFAULT_MAX_QUADS;
+	renderer->atlas_width = desc->atlas_width;
+	renderer->atlas_height = desc->atlas_height;
+	u64 vertex_bytes64 = (u64)sizeof(RgTextGpuVertex) * (u64)renderer->quad_capacity * 4ull;
+	u64 index_bytes64 = (u64)sizeof(u32) * (u64)renderer->quad_capacity * 6ull;
+	u64 quad_bytes64 = (u64)sizeof(RgTextQuad) * (u64)renderer->quad_capacity;
+	u64 atlas_bytes64 = (u64)desc->atlas_width * (u64)desc->atlas_height * 4ull;
+	if (renderer->quad_capacity == 0u || vertex_bytes64 > 0xFFFFFFFFull ||
+	    index_bytes64 > 0xFFFFFFFFull || quad_bytes64 > (u64)SIZE_MAX ||
+	    atlas_bytes64 > 0xFFFFFFFFull)
+	{
+		memset(renderer, 0, sizeof(*renderer));
+		return 0;
+	}
+
+	renderer->vertices = (RgTextGpuVertex*)SDL_malloc((size_t)vertex_bytes64);
+	renderer->indices = (u32*)SDL_malloc((size_t)index_bytes64);
+	renderer->scratch_quads = (RgTextQuad*)SDL_malloc((size_t)quad_bytes64);
+	if (!renderer->vertices || !renderer->indices || !renderer->scratch_quads)
+	{
+		rg_text_gpu_destroy(renderer);
+		return 0;
+	}
+
+	RgGpuShaderDesc vertex_desc = {0};
+	vertex_desc.name = "rg_text.vert";
+	vertex_desc.stage = SDL_GPU_SHADERSTAGE_VERTEX;
+	vertex_desc.uniform_buffer_count = 1u;
+	SDL_GPUShader* vertex_shader = rg_gpu_shader_load(desc->device, desc->shader_root, &vertex_desc);
+
+	RgGpuShaderDesc fragment_desc = {0};
+	fragment_desc.name = "rg_text.frag";
+	fragment_desc.stage = SDL_GPU_SHADERSTAGE_FRAGMENT;
+	fragment_desc.sampler_count = 1u;
+	SDL_GPUShader* fragment_shader = rg_gpu_shader_load(desc->device, desc->shader_root, &fragment_desc);
+
+	if (!vertex_shader || !fragment_shader ||
+	    !rg_text_gpu_create_pipeline(renderer, desc, vertex_shader, fragment_shader))
+	{
+		if (vertex_shader) SDL_ReleaseGPUShader(desc->device, vertex_shader);
+		if (fragment_shader) SDL_ReleaseGPUShader(desc->device, fragment_shader);
+		rg_text_gpu_destroy(renderer);
+		return 0;
+	}
+
+	SDL_ReleaseGPUShader(desc->device, vertex_shader);
+	SDL_ReleaseGPUShader(desc->device, fragment_shader);
+
+	SDL_GPUBufferCreateInfo vb_info;
+	memset(&vb_info, 0, sizeof(vb_info));
+	vb_info.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+	vb_info.size = (u32)vertex_bytes64;
+	renderer->vertex_buffer = SDL_CreateGPUBuffer(desc->device, &vb_info);
+
+	SDL_GPUBufferCreateInfo ib_info;
+	memset(&ib_info, 0, sizeof(ib_info));
+	ib_info.usage = SDL_GPU_BUFFERUSAGE_INDEX;
+	ib_info.size = (u32)index_bytes64;
+	renderer->index_buffer = SDL_CreateGPUBuffer(desc->device, &ib_info);
+
+	SDL_GPUTextureCreateInfo tex_info;
+	memset(&tex_info, 0, sizeof(tex_info));
+	tex_info.type = SDL_GPU_TEXTURETYPE_2D;
+	tex_info.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+	tex_info.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+	tex_info.width = desc->atlas_width;
+	tex_info.height = desc->atlas_height;
+	tex_info.layer_count_or_depth = 1;
+	tex_info.num_levels = 1;
+	renderer->atlas_texture = SDL_CreateGPUTexture(desc->device, &tex_info);
+
+	SDL_GPUSamplerCreateInfo sampler_info;
+	memset(&sampler_info, 0, sizeof(sampler_info));
+	sampler_info.min_filter = desc->min_filter;
+	sampler_info.mag_filter = desc->mag_filter;
+	sampler_info.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
+	sampler_info.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+	sampler_info.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+	sampler_info.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE;
+	renderer->sampler = SDL_CreateGPUSampler(desc->device, &sampler_info);
+
+	if (!renderer->vertex_buffer || !renderer->index_buffer || !renderer->atlas_texture || !renderer->sampler)
+	{
+		rg_text_gpu_destroy(renderer);
+		return 0;
+	}
+
+	if (desc->atlas_pixels_rgba8 &&
+	    !rg_text_gpu_upload_atlas(renderer, desc->atlas_pixels_rgba8, desc->atlas_width, desc->atlas_height))
+	{
+		rg_text_gpu_destroy(renderer);
+		return 0;
+	}
+
+	return 1;
+}
+
+RGINLINE void rg_text_gpu_destroy(RgTextGpuRenderer* renderer)
+{
+	if (!renderer)
+	{
+		return;
+	}
+
+	if (renderer->sampler)
+	{
+		SDL_ReleaseGPUSampler(renderer->device, renderer->sampler);
+	}
+	if (renderer->atlas_texture)
+	{
+		SDL_ReleaseGPUTexture(renderer->device, renderer->atlas_texture);
+	}
+	if (renderer->index_buffer)
+	{
+		SDL_ReleaseGPUBuffer(renderer->device, renderer->index_buffer);
+	}
+	if (renderer->vertex_buffer)
+	{
+		SDL_ReleaseGPUBuffer(renderer->device, renderer->vertex_buffer);
+	}
+	if (renderer->pipeline)
+	{
+		SDL_ReleaseGPUGraphicsPipeline(renderer->device, renderer->pipeline);
+	}
+	if (renderer->scratch_quads)
+	{
+		SDL_free(renderer->scratch_quads);
+	}
+	if (renderer->indices)
+	{
+		SDL_free(renderer->indices);
+	}
+	if (renderer->vertices)
+	{
+		SDL_free(renderer->vertices);
+	}
+
+	memset(renderer, 0, sizeof(*renderer));
+}
+
+RGINLINE int rg_text_gpu_upload_atlas(RgTextGpuRenderer* renderer,
+                                      const void* pixels,
+                                      u32 width,
+                                      u32 height)
+{
+	if (!renderer || !renderer->device || !renderer->atlas_texture || !pixels ||
+	    width == 0u || height == 0u || width != renderer->atlas_width || height != renderer->atlas_height)
+	{
+		return 0;
+	}
+
+	u64 size64 = (u64)width * (u64)height * 4ull;
+	if (size64 == 0u || size64 > 0xFFFFFFFFull)
+	{
+		return 0;
+	}
+	u32 size = (u32)size64;
+	SDL_GPUTransferBufferCreateInfo transfer_info;
+	memset(&transfer_info, 0, sizeof(transfer_info));
+	transfer_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
+	transfer_info.size = size;
+
+	SDL_GPUTransferBuffer* transfer = SDL_CreateGPUTransferBuffer(renderer->device, &transfer_info);
+	if (!transfer)
+	{
+		return 0;
+	}
+
+	void* mapped = SDL_MapGPUTransferBuffer(renderer->device, transfer, false);
+	if (!mapped)
+	{
+		SDL_ReleaseGPUTransferBuffer(renderer->device, transfer);
+		return 0;
+	}
+
+	SDL_memcpy(mapped, pixels, size);
+	SDL_UnmapGPUTransferBuffer(renderer->device, transfer);
+
+	SDL_GPUCommandBuffer* command_buffer = SDL_AcquireGPUCommandBuffer(renderer->device);
+	if (!command_buffer)
+	{
+		SDL_ReleaseGPUTransferBuffer(renderer->device, transfer);
+		return 0;
+	}
+
+	SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(command_buffer);
+	SDL_GPUTextureTransferInfo src;
+	memset(&src, 0, sizeof(src));
+	src.transfer_buffer = transfer;
+	src.offset = 0;
+	src.pixels_per_row = width;
+	src.rows_per_layer = height;
+
+	SDL_GPUTextureRegion dst;
+	memset(&dst, 0, sizeof(dst));
+	dst.texture = renderer->atlas_texture;
+	dst.mip_level = 0;
+	dst.layer = 0;
+	dst.x = 0;
+	dst.y = 0;
+	dst.z = 0;
+	dst.w = width;
+	dst.h = height;
+	dst.d = 1;
+
+	SDL_UploadToGPUTexture(copy, &src, &dst, false);
+	SDL_EndGPUCopyPass(copy);
+
+	int ok = SDL_SubmitGPUCommandBuffer(command_buffer) ? 1 : 0;
+	SDL_ReleaseGPUTransferBuffer(renderer->device, transfer);
+	return ok;
+}
+
+RGINLINE void rg_text_gpu_begin(RgTextGpuRenderer* renderer)
+{
+	if (!renderer)
+	{
+		return;
+	}
+
+	renderer->quad_count = 0u;
+	renderer->vertex_count = 0u;
+	renderer->index_count = 0u;
+}
+
+RGINLINE size_t rg_text_gpu_queue_quads(RgTextGpuRenderer* renderer,
+                                        const RgTextQuad* quads,
+                                        size_t quad_count)
+{
+	if (!renderer || !quads || quad_count == 0u)
+	{
+		return 0u;
+	}
+
+	size_t available = (size_t)renderer->quad_capacity - (size_t)renderer->quad_count;
+	if (quad_count > available)
+	{
+		quad_count = available;
+	}
+
+	for (size_t i = 0u; i < quad_count; i++)
+	{
+		const RgTextQuad* q = &quads[i];
+		u32 vertex_base = renderer->vertex_count;
+		u32 index_base = renderer->index_count;
+		RgTextGpuVertex* v = &renderer->vertices[vertex_base];
+		u32* idx = &renderer->indices[index_base];
+
+		v[0].x = q->x0;
+		v[0].y = q->y0;
+		v[0].z = 0.0f;
+		v[0].r = q->color.r;
+		v[0].g = q->color.g;
+		v[0].b = q->color.b;
+		v[0].a = q->color.a;
+		v[0].u = q->u0;
+		v[0].v = q->v0;
+		v[1].x = q->x1;
+		v[1].y = q->y0;
+		v[1].z = 0.0f;
+		v[1].r = q->color.r;
+		v[1].g = q->color.g;
+		v[1].b = q->color.b;
+		v[1].a = q->color.a;
+		v[1].u = q->u1;
+		v[1].v = q->v0;
+		v[2].x = q->x1;
+		v[2].y = q->y1;
+		v[2].z = 0.0f;
+		v[2].r = q->color.r;
+		v[2].g = q->color.g;
+		v[2].b = q->color.b;
+		v[2].a = q->color.a;
+		v[2].u = q->u1;
+		v[2].v = q->v1;
+		v[3].x = q->x0;
+		v[3].y = q->y1;
+		v[3].z = 0.0f;
+		v[3].r = q->color.r;
+		v[3].g = q->color.g;
+		v[3].b = q->color.b;
+		v[3].a = q->color.a;
+		v[3].u = q->u0;
+		v[3].v = q->v1;
+
+		idx[0] = vertex_base + 0u;
+		idx[1] = vertex_base + 1u;
+		idx[2] = vertex_base + 2u;
+		idx[3] = vertex_base + 0u;
+		idx[4] = vertex_base + 2u;
+		idx[5] = vertex_base + 3u;
+
+		renderer->quad_count++;
+		renderer->vertex_count += 4u;
+		renderer->index_count += 6u;
+	}
+
+	return quad_count;
+}
+
+RGINLINE size_t rg_text_gpu_queue(RgTextGpuRenderer* renderer,
+                                  const RgTextFont* font,
+                                  const char* text,
+                                  size_t text_size,
+                                  f32 x,
+                                  f32 y,
+                                  f32 scale,
+                                  RgTextColor color)
+{
+	if (!renderer || !font || !text || text_size == 0u)
+	{
+		return 0u;
+	}
+
+	size_t available = (size_t)renderer->quad_capacity - (size_t)renderer->quad_count;
+	if (available == 0u)
+	{
+		return 0u;
+	}
+
+	size_t built = rg_text_build_quads(font, text, text_size, x, y, scale, color,
+	                                   renderer->scratch_quads, available);
+	return rg_text_gpu_queue_quads(renderer, renderer->scratch_quads, built);
+}
+
+RGINLINE size_t rg_text_gpu_queue_ex(RgTextGpuRenderer* renderer, const RgTextBuildDesc* desc)
+{
+	if (!renderer || !desc)
+	{
+		return 0u;
+	}
+
+	size_t available = (size_t)renderer->quad_capacity - (size_t)renderer->quad_count;
+	if (available == 0u)
+	{
+		return 0u;
+	}
+
+	RgTextBuildDesc local = *desc;
+	local.quads = renderer->scratch_quads;
+	local.quad_capacity = available;
+	size_t built = rg_text_build_quads_ex(&local);
+	return rg_text_gpu_queue_quads(renderer, renderer->scratch_quads, built);
+}
+
+RGINLINE int rg_text_gpu_stage_upload(RgTextGpuRenderer* renderer,
+                                      RgGpuUploadRing* ring,
+                                      RgTextGpuUpload* out_upload)
+{
+	if (!renderer || !ring || !out_upload || renderer->vertex_count == 0u || renderer->index_count == 0u)
+	{
+		return 0;
+	}
+
+	memset(out_upload, 0, sizeof(*out_upload));
+	u64 vertex_size64 = (u64)sizeof(RgTextGpuVertex) * (u64)renderer->vertex_count;
+	u64 index_size64 = (u64)sizeof(u32) * (u64)renderer->index_count;
+	if (vertex_size64 > 0xFFFFFFFFull || index_size64 > 0xFFFFFFFFull)
+	{
+		return 0;
+	}
+	u32 vertex_size = (u32)vertex_size64;
+	u32 index_size = (u32)index_size64;
+	u32 base_offset = ring->offset;
+
+	if (!rg_gpu_upload_ring_alloc(ring, vertex_size, RG_GPU_UPLOAD_RING_DEFAULT_ALIGN, &out_upload->vertices))
+	{
+		return 0;
+	}
+
+	if (!rg_gpu_upload_ring_alloc(ring, index_size, sizeof(u32), &out_upload->indices))
+	{
+		ring->offset = base_offset;
+		memset(out_upload, 0, sizeof(*out_upload));
+		return 0;
+	}
+
+	SDL_memcpy(rg_gpu_upload_ring_ptr(ring, &out_upload->vertices), renderer->vertices, vertex_size);
+	SDL_memcpy(rg_gpu_upload_ring_ptr(ring, &out_upload->indices), renderer->indices, index_size);
+	return 1;
+}
+
+RGINLINE void rg_text_gpu_encode_upload(RgTextGpuRenderer* renderer,
+                                        SDL_GPUCopyPass* copy,
+                                        const RgGpuUploadRing* ring,
+                                        const RgTextGpuUpload* upload)
+{
+	if (!renderer || !copy || !ring || !upload ||
+	    upload->vertices.size == 0u || upload->indices.size == 0u)
+	{
+		return;
+	}
+
+	SDL_GPUTransferBufferLocation v_src;
+	v_src.transfer_buffer = ring->buffer;
+	v_src.offset = upload->vertices.offset;
+	SDL_GPUBufferRegion v_dst;
+	v_dst.buffer = renderer->vertex_buffer;
+	v_dst.offset = 0;
+	v_dst.size = upload->vertices.size;
+	SDL_UploadToGPUBuffer(copy, &v_src, &v_dst, true);
+
+	SDL_GPUTransferBufferLocation i_src;
+	i_src.transfer_buffer = ring->buffer;
+	i_src.offset = upload->indices.offset;
+	SDL_GPUBufferRegion i_dst;
+	i_dst.buffer = renderer->index_buffer;
+	i_dst.offset = 0;
+	i_dst.size = upload->indices.size;
+	SDL_UploadToGPUBuffer(copy, &i_src, &i_dst, true);
+}
+
+RGINLINE RgTextGpuRenderStats rg_text_gpu_flush(RgTextGpuRenderer* renderer,
+                                                 SDL_GPUCommandBuffer* command_buffer,
+                                                 SDL_GPURenderPass* pass,
+                                                 const RgTextGpuUniforms* uniforms)
+{
+	RgTextGpuRenderStats stats;
+	memset(&stats, 0, sizeof(stats));
+
+	if (!renderer || !command_buffer || !pass || renderer->index_count == 0u)
+	{
+		return stats;
+	}
+
+	SDL_BindGPUGraphicsPipeline(pass, renderer->pipeline);
+
+	SDL_GPUBufferBinding vb;
+	vb.buffer = renderer->vertex_buffer;
+	vb.offset = 0;
+	SDL_BindGPUVertexBuffers(pass, 0, &vb, 1);
+
+	SDL_GPUBufferBinding ib;
+	ib.buffer = renderer->index_buffer;
+	ib.offset = 0;
+	SDL_BindGPUIndexBuffer(pass, &ib, SDL_GPU_INDEXELEMENTSIZE_32BIT);
+
+	if (uniforms)
+	{
+		SDL_PushGPUVertexUniformData(command_buffer, 0, uniforms, sizeof(*uniforms));
+	}
+
+	SDL_GPUTextureSamplerBinding binding;
+	binding.texture = renderer->atlas_texture;
+	binding.sampler = renderer->sampler;
+	SDL_BindGPUFragmentSamplers(pass, 0, &binding, 1);
+
+	SDL_DrawGPUIndexedPrimitives(pass, renderer->index_count, 1, 0, 0, 0);
+	stats.quads = renderer->quad_count;
+	stats.indices = renderer->index_count;
+	stats.draw_calls = 1u;
+	return stats;
+}
+
+#endif // RG_TEXT_GPU_H

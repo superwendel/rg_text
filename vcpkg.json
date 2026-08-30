@@ -1,0 +1,28 @@
+{
+  "name": "rg-text-ci",
+  "version-string": "0.1.0",
+  "description": "Pinned development dependencies for rg_text CI.",
+  "builtin-baseline": "91e8cb4be8195112ea3a9c7e5846bd0b3ff74673",
+  "dependencies": [
+    "sdl3",
+    "sdl3-shadercross"
+  ],
+  "features": {
+    "baker": {
+      "description": "Dependencies for the optional offline font atlas baker.",
+      "dependencies": [
+        {
+          "name": "freetype",
+          "default-features": false
+        },
+        {
+          "name": "harfbuzz",
+          "default-features": false,
+          "features": [
+            "freetype"
+          ]
+        }
+      ]
+    }
+  }
+}

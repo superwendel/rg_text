@@ -53,3 +53,9 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# Generated shader binaries
+shaders/Compiled/
+
+# Manifest-mode vcpkg output
+vcpkg_installed/

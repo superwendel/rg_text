@@ -1,0 +1,513 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows / MSVC hosted CI gate
+    runs-on: windows-2025
+    timeout-minutes: 60
+    env:
+      RG_CORE_DIR: ${{ github.workspace }}\_deps\rg_core
+      VCPKG_ROOT: ${{ github.workspace }}\_deps\vcpkg
+      VCPKG_DISABLE_METRICS: 1
+
+    steps:
+      - name: Check out rg_text
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out pinned rg_core
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: superwendel/rg_core
+          ref: 27d5475a4af221813977f4b7d62e4e3f88cffab2
+          path: _deps/rg_core
+          persist-credentials: false
+
+      - name: Check out pinned vcpkg
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: microsoft/vcpkg
+          ref: 91e8cb4be8195112ea3a9c7e5846bd0b3ff74673
+          path: _deps/vcpkg
+          persist-credentials: false
+
+      - name: Initialize vcpkg paths
+        shell: pwsh
+        run: |
+          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_INSTALLED_DIR=$env:RUNNER_TEMP\vcpkg-installed"
+          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_BINARY_CACHE=$env:RUNNER_TEMP\vcpkg-binary-cache"
+          Add-Content -Path $env:GITHUB_ENV -Value "VCPKG_BINARY_SOURCES=clear;files,$env:RUNNER_TEMP\vcpkg-binary-cache,readwrite"
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ runner.temp }}\vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-x64-windows-${{ hashFiles('vcpkg.json') }}
+
+      - name: Bootstrap vcpkg
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path $env:VCPKG_BINARY_CACHE | Out-Null
+          & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+
+      - name: Install pinned runtime and GPU development tools
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install --triplet x64-windows "--x-install-root=$env:VCPKG_INSTALLED_DIR"
+
+      - name: Configure explicit dependency paths
+        shell: pwsh
+        run: |
+          $prefix = Join-Path $env:VCPKG_INSTALLED_DIR 'x64-windows'
+          $shadercross = @(
+            (Join-Path $prefix 'tools\sdl3-shadercross\shadercross.exe'),
+            (Join-Path $prefix 'tools\sdl3_shadercross\shadercross.exe')
+          ) | Where-Object {
+            Test-Path -LiteralPath $_ -PathType Leaf
+          } | Select-Object -First 1
+          if (-not $shadercross) {
+            throw 'shadercross.exe was not found in either vcpkg tool directory spelling.'
+          }
+          $required = @(
+            (Join-Path $prefix 'include\SDL3\SDL.h'),
+            (Join-Path $prefix 'lib\SDL3.lib'),
+            (Join-Path $prefix 'bin\SDL3.dll'),
+            $shadercross
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Required vcpkg output is missing: $path"
+            }
+          }
+
+          Add-Content -Path $env:GITHUB_ENV -Value "SDL3_INCLUDE_DIR=$(Join-Path $prefix 'include')"
+          Add-Content -Path $env:GITHUB_ENV -Value "SDL3_LIB_DIR=$(Join-Path $prefix 'lib')"
+          Add-Content -Path $env:GITHUB_ENV -Value "SDL3_BIN_DIR=$(Join-Path $prefix 'bin')"
+          Add-Content -Path $env:GITHUB_ENV -Value "SHADERCROSS_EXE=$shadercross"
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $prefix 'bin')
+          Add-Content -Path $env:GITHUB_PATH -Value (Split-Path -Parent $shadercross)
+
+      - name: Build and run hosted runtime CI suite
+        shell: pwsh
+        run: cmd.exe /d /c build.bat test_ci
+
+      - name: Install optional baker dependencies
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install `
+            --triplet x64-windows `
+            --x-feature=baker `
+            "--x-install-root=$env:VCPKG_INSTALLED_DIR"
+
+      - name: Configure explicit baker dependency paths
+        shell: pwsh
+        run: |
+          $prefix = Join-Path $env:VCPKG_INSTALLED_DIR 'x64-windows'
+          $required = @(
+            (Join-Path $prefix 'include\ft2build.h'),
+            (Join-Path $prefix 'include\harfbuzz\hb.h'),
+            (Join-Path $prefix 'include\harfbuzz\hb-ft.h'),
+            (Join-Path $prefix 'lib\freetype.lib'),
+            (Join-Path $prefix 'lib\harfbuzz.lib')
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+              throw "Required baker dependency is missing: $path"
+            }
+          }
+
+          Add-Content -Path $env:GITHUB_ENV -Value "FREETYPE_INCLUDE_DIR=$(Join-Path $prefix 'include')"
+          Add-Content -Path $env:GITHUB_ENV -Value "FREETYPE_LIB_DIR=$(Join-Path $prefix 'lib')"
+          Add-Content -Path $env:GITHUB_ENV -Value "FREETYPE_BIN_DIR=$(Join-Path $prefix 'bin')"
+          Add-Content -Path $env:GITHUB_ENV -Value "HARFBUZZ_INCLUDE_DIR=$(Join-Path $prefix 'include\harfbuzz')"
+          Add-Content -Path $env:GITHUB_ENV -Value "HARFBUZZ_LIB_DIR=$(Join-Path $prefix 'lib')"
+          Add-Content -Path $env:GITHUB_ENV -Value "HARFBUZZ_BIN_DIR=$(Join-Path $prefix 'bin')"
+          Add-Content -Path $env:GITHUB_PATH -Value (Join-Path $prefix 'bin')
+
+      - name: Fetch checksum-pinned Inter 4.1 test font
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'Inter-4.1.zip'
+          $extractRoot = Join-Path $env:RUNNER_TEMP 'Inter-4.1'
+          $expected = '97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872'
+
+          Invoke-WebRequest `
+            -Uri 'https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip' `
+            -OutFile $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $extractRoot
+
+          $font = Get-ChildItem -LiteralPath $extractRoot -Recurse -File -Filter '*.ttf' |
+            Where-Object {
+              (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() -eq $expected
+            } |
+            Select-Object -First 1
+          if (-not $font) {
+            throw "Inter archive did not contain the checksum-pinned test font ($expected)."
+          }
+          Add-Content -Path $env:GITHUB_ENV -Value "RG_TEXT_TEST_FONT=$($font.FullName)"
+
+      - name: Run baker round-trip
+        shell: pwsh
+        env:
+          RG_TEXT_BAKER_GOLDEN: 1
+        run: cmd.exe /d /c build.bat test_baker
+
+      - name: Verify shader formats and compile-only device binary
+        shell: pwsh
+        run: |
+          $formats = @{
+            DXIL = '*.dxil'
+            SPIRV = '*.spv'
+            MSL = '*.msl'
+          }
+          foreach ($entry in $formats.GetEnumerator()) {
+            $directory = Join-Path $env:GITHUB_WORKSPACE "shaders\Compiled\$($entry.Key)"
+            $files = @(Get-ChildItem -LiteralPath $directory -File -Filter $entry.Value)
+            if ($files.Count -ne 2) {
+              throw "Expected 2 $($entry.Key) shaders, found $($files.Count)."
+            }
+            if ($files | Where-Object { $_.Length -eq 0 }) {
+              throw "$($entry.Key) contains an empty shader output."
+            }
+          }
+
+          foreach ($artifact in @(
+            'test_text.exe',
+            'test_text_gpu.exe',
+            'test_text_gpu_device.exe',
+            'rg_text_bake.exe'
+          )) {
+            $path = Join-Path $env:GITHUB_WORKSPACE $artifact
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
+                (Get-Item -LiteralPath $path).Length -eq 0) {
+              throw "Expected build artifact is missing or empty: $artifact"
+            }
+          }
+          Write-Host 'GPU device execution is intentionally excluded on GitHub-hosted runners.'
+
+  c99-runtime:
+    name: Linux / ${{ matrix.compiler }} / strict C99 runtime
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler: [gcc, clang]
+    env:
+      RG_CORE_DIR: ${{ github.workspace }}/_deps/rg_core
+
+    steps:
+      - name: Check out rg_text
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out pinned rg_core
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: superwendel/rg_core
+          ref: 27d5475a4af221813977f4b7d62e4e3f88cffab2
+          path: _deps/rg_core
+          persist-credentials: false
+
+      - name: Build pinned SDL for GPU header checks
+        id: sdl
+        uses: libsdl-org/setup-sdl@afd98199e97f9c2aa739474be7e0886d149a5e47 # Node 24 main, 2026-08-29
+        with:
+          version: 147a8ee32dbf9ac02f3794964490687b6bbda1bc # release-3.4.14
+          build-type: Release
+          install-linux-dependencies: true
+          add-to-environment: true
+
+      - name: Build and run strict C99 runtime checks
+        shell: bash
+        env:
+          CC: ${{ matrix.compiler }}
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/rg-text-c99-${CC}"
+          mkdir -p "$output_dir"
+          sdl_prefix='${{ steps.sdl.outputs.prefix }}'
+          export PKG_CONFIG_PATH="$sdl_prefix/lib/pkgconfig:$sdl_prefix/lib64/pkgconfig:$sdl_prefix/share/pkgconfig:${PKG_CONFIG_PATH:-}"
+          test -f "$sdl_prefix/include/SDL3/SDL.h"
+          pkg-config --modversion sdl3
+          read -r -a sdl_libs <<< "$(pkg-config --libs sdl3)"
+
+          common=(
+            -std=c99
+            -pedantic-errors
+            -O2
+            -Wall
+            -Wextra
+            -Werror
+            -I "$RG_CORE_DIR/src"
+          )
+          sdl_common=(
+            "${common[@]}"
+            -isystem "$sdl_prefix/include"
+          )
+
+          "$CC" "${common[@]}" tests/test_text.c -lm \
+            -o "$output_dir/test_text"
+          "$CC" "${sdl_common[@]}" tests/test_text_gpu.c \
+            "${sdl_libs[@]}" -lm -o "$output_dir/test_text_gpu"
+          "$CC" "${sdl_common[@]}" tests/test_text_gpu_device.c \
+            "${sdl_libs[@]}" -lm -o "$output_dir/test_text_gpu_device"
+
+          "$output_dir/test_text"
+          "$output_dir/test_text_gpu"
+          echo 'GPU device execution is intentionally excluded on GitHub-hosted runners.'
+
+  sanitizers:
+    name: Linux / Clang ASan + UBSan + fuzzers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RG_CORE_DIR: ${{ github.workspace }}/_deps/rg_core
+
+    steps:
+      - name: Check out rg_text
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out pinned rg_core
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: superwendel/rg_core
+          ref: 27d5475a4af221813977f4b7d62e4e3f88cffab2
+          path: _deps/rg_core
+          persist-credentials: false
+
+      - name: Initialize sanitizer workspace
+        shell: bash
+        run: echo "SANITIZER_DIR=$RUNNER_TEMP/rg-text-sanitize" >> "$GITHUB_ENV"
+
+      - name: Build and run sanitizer tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$SANITIZER_DIR"
+          common=(
+            -std=gnu11
+            -O1
+            -g
+            -Wall
+            -Wextra
+            -Werror
+            -fno-omit-frame-pointer
+            -fno-sanitize-recover=all
+            -I "$RG_CORE_DIR/src"
+          )
+
+          clang "${common[@]}" -fsanitize=address,undefined \
+            tests/test_text.c -lm -o "$SANITIZER_DIR/test_text"
+
+          export ASAN_OPTIONS='detect_leaks=1:halt_on_error=1:strict_string_checks=1:exitcode=86'
+          export UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1:exitcode=87'
+          "$SANITIZER_DIR/test_text"
+
+      - name: Build both libFuzzer targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          common=(
+            -std=gnu11
+            -O1
+            -g
+            -Wall
+            -Wextra
+            -Werror
+            -fno-omit-frame-pointer
+            -fno-sanitize-recover=all
+            -I "$RG_CORE_DIR/src"
+          )
+          clang "${common[@]}" -fsanitize=fuzzer,address,undefined \
+            tests/fuzz_rgfont.c -lm -o "$SANITIZER_DIR/fuzz_rgfont"
+          clang "${common[@]}" -fsanitize=fuzzer,address,undefined \
+            tests/fuzz_utf8.c -lm -o "$SANITIZER_DIR/fuzz_utf8"
+
+      - name: Exercise RGFONT parser fuzzer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$SANITIZER_DIR/crashes/rgfont"
+          cp -R tests/fuzz_corpus "$SANITIZER_DIR/corpus-rgfont"
+          export ASAN_OPTIONS='detect_leaks=1:halt_on_error=1:strict_string_checks=1'
+          export UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1'
+          "$SANITIZER_DIR/fuzz_rgfont" "$SANITIZER_DIR/corpus-rgfont" \
+            -dict=tests/rgfont_fuzzer.dict \
+            -max_total_time=30 \
+            -timeout=5 \
+            -artifact_prefix="$SANITIZER_DIR/crashes/rgfont/"
+
+      - name: Exercise UTF-8 fuzzer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$SANITIZER_DIR/crashes/utf8"
+          cp -R tests/fuzz_corpus "$SANITIZER_DIR/corpus-utf8"
+          export ASAN_OPTIONS='detect_leaks=1:halt_on_error=1:strict_string_checks=1'
+          export UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1'
+          "$SANITIZER_DIR/fuzz_utf8" "$SANITIZER_DIR/corpus-utf8" \
+            -max_total_time=30 \
+            -timeout=5 \
+            -artifact_prefix="$SANITIZER_DIR/crashes/utf8/"
+
+      - name: Preserve fuzzer crash inputs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rg-text-fuzzer-crashes-${{ github.run_id }}
+          path: ${{ runner.temp }}/rg-text-sanitize/crashes
+          if-no-files-found: ignore
+          retention-days: 7
+
+  baker-sanitizers:
+    name: Linux / FreeType + HarfBuzz baker sanitizers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RG_CORE_DIR: ${{ github.workspace }}/_deps/rg_core
+
+    steps:
+      - name: Check out rg_text
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out pinned rg_core
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: superwendel/rg_core
+          ref: 27d5475a4af221813977f4b7d62e4e3f88cffab2
+          path: _deps/rg_core
+          persist-credentials: false
+
+      - name: Install baker development packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libfreetype-dev libharfbuzz-dev unzip
+
+      - name: Fetch checksum-pinned Inter 4.1 test font
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/Inter-4.1.zip"
+          extract_root="$RUNNER_TEMP/Inter-4.1"
+          expected='97ad806f526e41546d46365bb3a393145f75b7b1568913db74549ad8b8dba872'
+
+          curl --fail --location --silent --show-error \
+            'https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip' \
+            --output "$archive"
+          unzip -q "$archive" -d "$extract_root"
+
+          font_path=''
+          while IFS= read -r -d '' candidate; do
+            if [[ "$(sha256sum "$candidate" | cut -d ' ' -f 1)" == "$expected" ]]; then
+              font_path="$candidate"
+              break
+            fi
+          done < <(find "$extract_root" -type f -name '*.ttf' -print0)
+          if [[ -z "$font_path" ]]; then
+            echo "Inter archive did not contain the checksum-pinned test font ($expected)." >&2
+            exit 1
+          fi
+          echo "RG_TEXT_TEST_FONT=$font_path" >> "$GITHUB_ENV"
+
+      - name: Build and run sanitized baker round-trip
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/rg-text-baker-sanitize"
+          mkdir -p "$output_dir/first" "$output_dir/second" \
+            "$output_dir/no-kerning" "$output_dir/wide" "$output_dir/truncated"
+
+          common=(
+            -std=gnu11
+            -O1
+            -g
+            -Wall
+            -Wextra
+            -Werror
+            -fno-omit-frame-pointer
+            -fno-sanitize-recover=all
+            -I "$RG_CORE_DIR/src"
+          )
+          read -r -a package_cflags <<< "$(pkg-config --cflags harfbuzz freetype2)"
+          read -r -a package_libs <<< "$(pkg-config --libs harfbuzz freetype2)"
+          external_cflags=()
+          for flag in "${package_cflags[@]}"; do
+            if [[ "$flag" == -I* ]]; then
+              external_cflags+=( -isystem "${flag#-I}" )
+            else
+              external_cflags+=( "$flag" )
+            fi
+          done
+
+          clang "${common[@]}" "${external_cflags[@]}" \
+            -fsanitize=address,undefined tools/rg_text_bake.c \
+            "${package_libs[@]}" -lm -o "$output_dir/rg_text_bake"
+          clang "${common[@]}" -fsanitize=address,undefined \
+            tests/test_bake_output.c -lm -o "$output_dir/test_bake_output"
+
+          export ASAN_OPTIONS='detect_leaks=1:halt_on_error=1:strict_string_checks=1:exitcode=86'
+          export UBSAN_OPTIONS='halt_on_error=1:print_stacktrace=1:exitcode=87'
+          "$output_dir/rg_text_bake" --self-test
+          "$output_dir/rg_text_bake" "$RG_TEXT_TEST_FONT" \
+            "$output_dir/first/inter_medium_16" 16 32-126 1 256
+          "$output_dir/rg_text_bake" "$RG_TEXT_TEST_FONT" \
+            "$output_dir/second/inter_medium_16" 16 32-126 1 256
+          "$output_dir/rg_text_bake" --no-kerning "$RG_TEXT_TEST_FONT" \
+            "$output_dir/no-kerning/inter_medium_16" 16 32-126 1 256
+          set +e
+          "$output_dir/rg_text_bake" "$RG_TEXT_TEST_FONT" \
+            "$output_dir/wide/rejected" 16 32-2047 1 512 \
+            2> "$output_dir/wide/rejected.stderr"
+          rejected_status=$?
+          set -e
+          cat "$output_dir/wide/rejected.stderr"
+          if [[ $rejected_status -ne 1 || \
+                -e "$output_dir/wide/rejected.font" || \
+                -e "$output_dir/wide/rejected.rgba" ]] || \
+             ! grep --fixed-strings --quiet \
+                'Kerning extraction is limited to 512 supported glyphs' \
+                "$output_dir/wide/rejected.stderr"; then
+            echo 'Kerning work-cap rejection did not preserve the output contract.' >&2
+            exit 1
+          fi
+          "$output_dir/rg_text_bake" --no-kerning "$RG_TEXT_TEST_FONT" \
+            "$output_dir/wide/inter_medium_16" 16 32-2047 1 512
+          "$output_dir/test_bake_output" "$output_dir/first/inter_medium_16"
+          "$output_dir/test_bake_output" \
+            "$output_dir/no-kerning/inter_medium_16" --no-kerning
+          "$output_dir/test_bake_output" "$output_dir/first/inter_medium_16" \
+            --compare-no-kerning "$output_dir/no-kerning/inter_medium_16"
+          "$output_dir/test_bake_output" \
+            "$output_dir/wide/inter_medium_16" --no-kerning-large
+          cp "$output_dir/first/inter_medium_16.font" \
+            "$output_dir/truncated/inter_medium_16.font"
+          atlas_size=$(stat --format='%s' "$output_dir/first/inter_medium_16.rgba")
+          head --bytes="$((atlas_size - 1))" \
+            "$output_dir/first/inter_medium_16.rgba" \
+            > "$output_dir/truncated/inter_medium_16.rgba"
+          "$output_dir/test_bake_output" \
+            "$output_dir/truncated/inter_medium_16" --expect-invalid-atlas
+          cmp "$output_dir/first/inter_medium_16.font" "$output_dir/second/inter_medium_16.font"
+          cmp "$output_dir/first/inter_medium_16.rgba" "$output_dir/second/inter_medium_16.rgba"
