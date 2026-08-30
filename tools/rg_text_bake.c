@@ -919,6 +919,7 @@ static int shape_pair(hb_font_t* font,
 	}
 
 	hb_buffer_reset(buffer);
+	hb_buffer_set_content_type(buffer, HB_BUFFER_CONTENT_TYPE_UNICODE);
 	hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
 	hb_buffer_set_language(buffer, hb_language_from_string("und", -1));
 	hb_buffer_set_cluster_level(buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
