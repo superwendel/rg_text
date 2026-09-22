@@ -1,4 +1,4 @@
-# rg_text
+# rg_text by Reverse Gravity
 
 Bitmap-font loading, UTF-8 measurement, quad generation, and SDL3 GPU drawing
 for the Reverse Gravity ecosystem.
