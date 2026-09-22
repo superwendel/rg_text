@@ -18,6 +18,8 @@ left-to-right bitmap text, not a Unicode shaping engine.
   FreeType and HarfBuzz.
 - `shaders/` — HLSL source for the SDL3 GPU path. Generated backend binaries
   are intentionally ignored.
+- `examples/hello_text.c` — runnable SDL3 GPU example with an included pixel font.
+- `benchmarks/bench_text.c` — layout benchmark, with optional RGFONT input.
 
 See [the API and format notes](docs/rg_text.md) for usage.
 
@@ -29,13 +31,27 @@ From a Visual Studio Developer Command Prompt:
 build.bat test
 build.bat test_ci
 build.bat shaders
+build.bat example
+build.bat bench
 ```
 
 `test` runs the renderer-neutral suite only and never silently skips GPU work.
-`test_ci` additionally requires SDL3, compiles the GPU device test, and
-translates every shader backend. `test_release` is the strict local release
-gate: it also builds the optional baker, bakes the Inter test font named by
-`RG_TEXT_TEST_FONT`, and executes the SDL_GPU device test.
+`test_ci` additionally requires SDL3, compiles the GPU device test, example,
+and benchmark, and translates every shader backend. `test_release` is the
+strict local release gate: it also builds the optional baker, bakes the Inter
+test font named by `RG_TEXT_TEST_FONT`, runs the SDL_GPU pixel-readback tests,
+and smoke-tests the example. The device test accepts a backend name, for example
+`test_text_gpu_device.exe vulkan`, when SDL3's DLL is on `PATH`.
+
+Run `build.bat example` from this repository's root. The example includes a
+small original bitmap font under this project's MIT license, so it needs no
+baker or downloaded font. Escape or closing the window exits; use
+`build.bat example --smoke-test` for one hidden offscreen frame.
+
+`build.bat bench` reports layout costs for a generated font. To benchmark a
+real asset, use `build.bat bench path\to\font.font`. It measures complete
+left-aligned lines and a one-quad output limit; timing is informational and
+is not used as a CI pass/fail threshold.
 
 The public baker round-trip uses renderer-version-tolerant structural checks.
 Pinned CI also sets `RG_TEXT_BAKER_GOLDEN=1` to lock selected Inter 4.1 glyph,
@@ -43,6 +59,7 @@ metric, atlas, and kerning invariants against the manifest's pinned Windows
 dependency versions.
 
 `RG_CORE_DIR` defaults to `..\rg_core`. SDL-dependent checks use `SDL3_DIR`.
+CI pins `rg_core` to `27d5475a4af221813977f4b7d62e4e3f88cffab2`.
 Shader compilation uses `SHADERCROSS_EXE` or an SDL_shadercross installation
 under `C:\libs`.
 
@@ -72,12 +89,19 @@ larger atlases (up to the 2,048-codepoint selection limit); it emits no pair
 records and skips HarfBuzz shaping.
 
 The baker writes `<output_base>.font` and a tightly packed, row-major
-`<output_base>.rgba` atlas. The atlas byte size is `width * height * 4`, using
-the dimensions stored in the `.font` file. RGFONT remains a basic
-codepoint-to-glyph format: substitutions are disabled during pair extraction,
+`<output_base>.rgba` straight-alpha atlas. The atlas byte size is
+`width * height * 4`, using the dimensions stored in the `.font` file. RGFONT
+remains a basic codepoint-to-glyph format: substitutions are disabled during
+pair extraction,
 and placement or advance changes that cannot be represented by one horizontal
 pair adjustment are omitted. Runtime ligatures, bidirectional text, and
 complex-script shaping remain outside this library's scope.
+
+The SDL3 GPU renderer premultiplies atlas pixels during upload for correct
+linear filtering, and uses matching shaders and blending. Rebuild the supplied
+shaders when updating the renderer; custom fragment shaders must follow the
+[premultiplied output contract](docs/rg_text.md#sdl3-gpu-path). Caller-provided
+atlas bytes and vertex colors remain straight-alpha.
 
 Both outputs are fully staged in unique same-directory files before either
 final path is replaced. The atlas is replaced first and `.font` last as the

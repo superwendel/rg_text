@@ -689,7 +689,6 @@ static void blit_foreground_layer(const u8* alpha,
                                   int dst_y,
                                   u8* pixels,
                                   u32 atlas_width)
-
 {
 	for (int row = 0; row < bitmap_h; row++)
 	{
@@ -703,10 +702,17 @@ static void blit_foreground_layer(const u8* alpha,
 			if (value != 0u)
 			{
 				u8* px = dst + (size_t)col * 4u;
-				px[0] = 255u;
-				px[1] = 255u;
-				px[2] = 255u;
-				px[3] = value;
+				/* Keep the atlas straight-alpha while compositing over its shadow. */
+				u32 foreground = (u32)value * 255u;
+				u32 background = (u32)px[3] * (255u - (u32)value);
+				u32 combined = foreground + background;
+				for (u32 channel = 0u; channel < 3u; channel++)
+				{
+					px[channel] = (u8)((255u * foreground + (u32)px[channel] * background +
+					                     combined / 2u) /
+					                    combined);
+				}
+				px[3] = (u8)((combined + 127u) / 255u);
 			}
 		}
 	}
@@ -1234,6 +1240,34 @@ static int run_self_tests(void)
 	{
 		fprintf(stderr, "kerning work cap self-test failed\n");
 		return 0;
+	}
+
+	static const struct
+	{
+		u8 foreground_alpha;
+		u8 shadow_alpha;
+		u8 expected[4];
+	} composite_cases[] = {
+	    {0u, 128u, {5u, 5u, 8u, 128u}},
+	    {1u, 255u, {6u, 6u, 9u, 255u}},
+	    {128u, 128u, {172u, 172u, 173u, 192u}},
+	    {64u, 128u, {105u, 105u, 107u, 160u}},
+	    {128u, 255u, {130u, 130u, 132u, 255u}},
+	    {128u, 0u, {255u, 255u, 255u, 128u}},
+	    {255u, 128u, {255u, 255u, 255u, 255u}},
+	    {1u, 0u, {255u, 255u, 255u, 1u}},
+	};
+	for (u32 i = 0u; i < (u32)(sizeof(composite_cases) / sizeof(composite_cases[0])); i++)
+	{
+		u8 pixel[4] = {RG_TEXT_BAKE_SHADOW_R, RG_TEXT_BAKE_SHADOW_G,
+		               RG_TEXT_BAKE_SHADOW_B, composite_cases[i].shadow_alpha};
+		blit_foreground_layer(&composite_cases[i].foreground_alpha, 1, 1, 0, 0,
+		                      pixel, 1u);
+		if (memcmp(pixel, composite_cases[i].expected, sizeof(pixel)) != 0)
+		{
+			fprintf(stderr, "straight-alpha compositing self-test failed for case %u\n", i);
+			return 0;
+		}
 	}
 
 	u8 positive_rows[9] = {1u, 2u, 0u, 3u, 4u, 0u, 5u, 6u, 0u};

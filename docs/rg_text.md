@@ -40,6 +40,26 @@ if (!rg_text_font_load_rgfont(&font, &desc))
 RgTextSize size = rg_text_measure_cstr(&font, "Hello", 1.0f);
 ```
 
+The loader sorts the caller's glyph and kerning arrays in place without
+allocating, then uses binary searches during layout. Duplicate glyph
+codepoints and duplicate kerning pairs are rejected. Array contents and order
+may change even if loading fails; use a font only after a successful load.
+The arrays must outlive the font and remain unchanged while it is in use.
+The source RGFONT bytes can be released after loading.
+
+Manually assembled fonts remain supported: zero-initialize `RgTextFont`, fill
+its arrays and counts, and leave its internal lookup flags at zero. Those
+fonts use linear lookup and may have unsorted arrays. Do not copy a loaded
+font and replace or reorder its arrays without clearing its internal lookup
+flags or reloading it.
+
+Fallback glyphs use the kerning pairs for the glyphs actually displayed.
+Left-aligned quad generation does not premeasure lines and stops when the
+output capacity is reached. Center and right alignment measure each line;
+when `align_width` is not positive, they also measure the full text to choose
+an alignment width. A build call returns the number of quads written and may
+truncate to the provided capacity.
+
 ## RGFONT format
 
 ```text
@@ -55,7 +75,7 @@ kerning <left_codepoint> <right_codepoint> <x_advance>
 
 Glyph offsets are relative to the top-left text pen. Pair the metrics with the
 raw `.rgba` atlas emitted by `rg_text_bake`. It is tightly packed row-major
-RGBA8 data; the `atlas` record supplies its width and height.
+straight-alpha RGBA8 data; the `atlas` record supplies its width and height.
 
 ## SDL3 GPU path
 
@@ -72,6 +92,20 @@ The frame flow is:
 4. Encode the staged copies with `rg_text_gpu_encode_upload`
 5. Call `rg_text_gpu_flush` inside the caller's render pass
 
+End the upload ring mapping before encoding copies. Keep the queue unchanged
+between staging and drawing. The renderer's pipeline expects one color target
+with the format supplied at creation, single sampling, and no depth attachment.
+See [the runnable example](../examples/hello_text.c) for the complete setup,
+frame ordering, projection, and cleanup.
+
+Atlas input pixels use straight alpha and are copied during upload. The GPU
+copy stores premultiplied RGB so interpolation across transparent padding
+preserves edge brightness. The supplied fragment shader also multiplies tint
+RGB by tint alpha; blending uses `ONE, ONE_MINUS_SRC_ALPHA` for both color and
+alpha. Custom fragment shaders must output premultiplied color and account
+for tint opacity the same way. Recompile the shaders when updating from the
+old straight-alpha GPU path. The on-disk atlas format does not change.
+
 ## Bake tool
 
 ```bat
@@ -84,6 +118,9 @@ normally hinted grayscale rasterization and glyph metrics, and HarfBuzz for
 OpenType kerning selection. These are dependencies of the optional baker
 executable only; the runtime library and generated files do not include or link
 either library.
+
+The baker composites white foreground coverage over its built-in dark shadow
+using source-over alpha, then stores the result as straight-alpha RGBA8.
 
 For every candidate codepoint pair, the baker compares HarfBuzz output with the
 active `kern` feature enabled and disabled. This respects the font's OpenType

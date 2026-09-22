@@ -10,5 +10,6 @@ struct FragmentInput
 
 float4 main(FragmentInput input) : SV_Target0
 {
-	return input.color * atlas_texture.Sample(atlas_sampler, input.uv);
+	float4 sample_color = atlas_texture.Sample(atlas_sampler, input.uv);
+	return sample_color * float4(input.color.rgb * input.color.a, input.color.a);
 }

@@ -13,6 +13,8 @@
 //       location 1: float4 color
 //       location 2: float2 uv
 //   - Compiled shaders are loaded through rg_gpu from the supplied shader root.
+//   - Atlas inputs use straight-alpha RGBA8. Uploads premultiply RGB for filtering;
+//     fragment shaders must output premultiplied color, including vertex opacity.
 //   - All functions have internal linkage and work in unity builds.
 //
 // Author: Steven Wendel (superwendel)
@@ -62,7 +64,7 @@ typedef struct RgTextGpuDesc
 	SDL_GPUDevice* device;
 	SDL_GPUTextureFormat target_format;
 	const char* shader_root;
-	const void* atlas_pixels_rgba8;
+	const void* atlas_pixels_rgba8; // Straight-alpha RGBA8; copied during creation.
 	u32 atlas_width;
 	u32 atlas_height;
 	u32 max_quads;
@@ -127,9 +129,9 @@ RGINLINE int rg_text_gpu_create(RgTextGpuRenderer* renderer, const RgTextGpuDesc
 RGINLINE void rg_text_gpu_destroy(RgTextGpuRenderer* renderer);
 
 /**
- * @brief Upload the atlas pixels supplied at creation time.
+ * @brief Upload straight-alpha atlas pixels, premultiplying the GPU copy.
  * @param renderer Renderer
- * @param pixels RGBA8 pixels
+ * @param pixels Straight-alpha RGBA8 pixels (not modified)
  * @param width Atlas width
  * @param height Atlas height
  * @return 1 on success, 0 on failure
@@ -261,7 +263,7 @@ RGINLINE int rg_text_gpu_create_pipeline(RgTextGpuRenderer* renderer,
 
 	SDL_GPUColorTargetBlendState blend;
 	memset(&blend, 0, sizeof(blend));
-	blend.src_color_blendfactor = SDL_GPU_BLENDFACTOR_SRC_ALPHA;
+	blend.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
 	blend.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
 	blend.color_blend_op = SDL_GPU_BLENDOP_ADD;
 	blend.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
@@ -481,7 +483,16 @@ RGINLINE int rg_text_gpu_upload_atlas(RgTextGpuRenderer* renderer,
 		return 0;
 	}
 
-	SDL_memcpy(mapped, pixels, size);
+	const u8* source_pixels = (const u8*)pixels;
+	u8* upload_pixels = (u8*)mapped;
+	for (u32 offset = 0u; offset < size; offset += 4u)
+	{
+		u32 alpha = source_pixels[offset + 3u];
+		upload_pixels[offset + 0u] = (u8)(((u32)source_pixels[offset + 0u] * alpha + 127u) / 255u);
+		upload_pixels[offset + 1u] = (u8)(((u32)source_pixels[offset + 1u] * alpha + 127u) / 255u);
+		upload_pixels[offset + 2u] = (u8)(((u32)source_pixels[offset + 2u] * alpha + 127u) / 255u);
+		upload_pixels[offset + 3u] = (u8)alpha;
+	}
 	SDL_UnmapGPUTransferBuffer(renderer->device, transfer);
 
 	SDL_GPUCommandBuffer* command_buffer = SDL_AcquireGPUCommandBuffer(renderer->device);

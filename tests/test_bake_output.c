@@ -390,6 +390,7 @@ int main(int argc, char** argv)
 	int every_glyph_has_coverage = 1;
 	int has_foreground = 0;
 	int has_shadow = 0;
+	int has_composited_edge = 0;
 	for (u32 i = 0u; i < font.glyph_count; i++)
 	{
 		const RgTextGlyph* glyph = &font.glyphs[i];
@@ -435,6 +436,13 @@ int main(int argc, char** argv)
 						    rgba[offset + 2u] == 8u)
 						{
 							has_shadow = 1;
+						}
+						if (rgba[offset] > 5u && rgba[offset] < 255u &&
+						    rgba[offset + 1u] == rgba[offset] &&
+						    rgba[offset + 2u] >= rgba[offset] &&
+						    (u32)rgba[offset + 2u] <= (u32)rgba[offset] + 3u)
+						{
+							has_composited_edge = 1;
 						}
 					}
 				}
@@ -545,7 +553,7 @@ int main(int argc, char** argv)
 	    font.glyph_count != 95u || font.fallback_codepoint != '?' ||
 	    !glyphs_sorted || !atlas_shape_valid || !rectangles_valid ||
 	    !every_glyph_has_coverage || !pixels_stay_in_rectangles ||
-	    !has_foreground || !has_shadow || !kerning_valid ||
+	    !has_foreground || !has_shadow || !has_composited_edge || !kerning_valid ||
 	    (expect_kerning && (!has_negative_kerning || av_kerning >= 0 ||
 	                        to_kerning >= 0 || underscore_j_kerning <= 0)) ||
 	    (!expect_kerning && (av_kerning != 0 || to_kerning != 0 ||

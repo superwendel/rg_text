@@ -17,6 +17,10 @@ if /I "%TARGET%"=="test_gpu_device" goto test_gpu_device
 if /I "%TARGET%"=="test_baker" goto test_baker
 if /I "%TARGET%"=="shaders" goto shaders
 if /I "%TARGET%"=="rg_text_bake" goto rg_text_bake
+if /I "%TARGET%"=="bench" goto bench
+if /I "%TARGET%"=="bench_build" goto bench_build
+if /I "%TARGET%"=="example" goto example
+if /I "%TARGET%"=="example_build" goto example_build
 
 echo Unknown target: %TARGET%
 exit /b 1
@@ -139,6 +143,12 @@ if not errorlevel 0 exit /b 1
 call "%~f0" test_gpu_device_build
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
+call "%~f0" bench_build
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call "%~f0" example_build
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
 echo rg_text CI suite passed. The optional baker and GPU device execution were not run; use test_release.
 exit /b 0
 
@@ -150,6 +160,9 @@ call "%~f0" test_baker
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 call "%~f0" test_gpu_device
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call "%~f0" example --smoke-test
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 echo All rg_text release tests passed.
@@ -196,6 +209,62 @@ cl /nologo /std:c11 /W4 /WX /O2 /I "%RG_CORE_DIR%\src" /I "%SDL3_INCLUDE_DIR%" t
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 test_text_gpu.exe
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+exit /b 0
+
+:bench
+call :bench_build
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+if "%~2"=="" (
+	bench_text.exe
+) else (
+	bench_text.exe "%~2"
+)
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+exit /b 0
+
+:bench_build
+call :ensure_compiler
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call :validate_core
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+cl /nologo /std:c11 /W4 /WX /O2 /D_CRT_SECURE_NO_WARNINGS /I "%RG_CORE_DIR%\src" benchmarks\bench_text.c /Fe:bench_text.exe
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+exit /b 0
+
+:example
+call "%~f0" shaders
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call :example_build
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+hello_text.exe %2
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+exit /b 0
+
+:example_build
+call :ensure_compiler
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call :validate_core
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call :find_sdl
+if errorlevel 1 (
+	echo SDL3 not found. Set SDL3_DIR or the explicit SDL3 include and library directories.
+	exit /b 1
+)
+if not errorlevel 0 exit /b 1
+set "PATH=%SDL3_BIN_DIR%;%SDL3_LIB_DIR%;%PATH%"
+cl /nologo /std:c11 /W4 /WX /O2 /I "%RG_CORE_DIR%\src" /I "%SDL3_INCLUDE_DIR%" examples\hello_text.c /Fe:hello_text.exe /link /LIBPATH:"%SDL3_LIB_DIR%" SDL3.lib
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 exit /b 0
@@ -381,10 +450,10 @@ echo Failed to remove baker integration-test outputs: %BAKE_TEST_DIR%
 exit /b 1
 
 :clean
-del /q test_text.exe test_text_gpu.exe test_text_gpu_device.exe test_bake_output.exe rg_text_bake.exe 2>nul
-del /q test_text.obj test_text_gpu.obj test_text_gpu_device.obj test_bake_output.obj rg_text_bake.obj 2>nul
+del /q test_text.exe test_text_gpu.exe test_text_gpu_device.exe test_bake_output.exe rg_text_bake.exe bench_text.exe hello_text.exe 2>nul
+del /q test_text.obj test_text_gpu.obj test_text_gpu_device.obj test_bake_output.obj rg_text_bake.obj bench_text.obj hello_text.obj 2>nul
 if exist "shaders\Compiled" rmdir /s /q "shaders\Compiled"
-for %%f in (test_text.exe test_text_gpu.exe test_text_gpu_device.exe test_bake_output.exe rg_text_bake.exe test_text.obj test_text_gpu.obj test_text_gpu_device.obj test_bake_output.obj rg_text_bake.obj) do if exist "%%f" (
+for %%f in (test_text.exe test_text_gpu.exe test_text_gpu_device.exe test_bake_output.exe rg_text_bake.exe bench_text.exe hello_text.exe test_text.obj test_text_gpu.obj test_text_gpu_device.obj test_bake_output.obj rg_text_bake.obj bench_text.obj hello_text.obj) do if exist "%%f" (
 	echo Failed to remove build artifact: %%f
 	exit /b 1
 )

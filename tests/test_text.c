@@ -345,6 +345,199 @@ static void test_parse_failures(void)
 	TEST_PASS();
 }
 
+static void test_unordered_lookup(void)
+{
+	static const char data[] =
+	    "rgfont 1\natlas 8 8\nline_height 8\n"
+	    "glyph 66 0 0 1 1 0 0 7\n"
+	    "glyph 1114111 0 0 1 1 0 0 9\n"
+	    "glyph 63 0 0 1 1 0 0 4\n"
+	    "glyph 65 0 0 1 1 0 0 6\n"
+	    "kerning 66 65 -3\nkerning 65 66 -2\n"
+	    "kerning 1114111 1114111 -5\nkerning 65 63 -1\n"
+	    "kerning 63 65 -4\n";
+	RgTextGlyph glyphs[4];
+	RgTextKerning kernings[5];
+	RgTextFont font;
+	RgTextFontLoadDesc load = {0};
+	load.data = data;
+	load.data_size = sizeof(data) - 1u;
+	load.glyphs = glyphs;
+	load.glyph_capacity = RG_ARRAY_COUNT(glyphs);
+	load.kernings = kernings;
+	load.kerning_capacity = RG_ARRAY_COUNT(kernings);
+	TEST_ASSERT(rg_text_font_load_rgfont(&font, &load), "load unordered records");
+	TEST_ASSERT(rg_text_find_glyph(&font, 1114111u)->x_advance == 9, "find final Unicode key");
+	TEST_ASSERT(rg_text_find_glyph(&font, 'A')->x_advance == 6, "find middle glyph key");
+	TEST_ASSERT(rg_text_find_glyph(&font, 'B')->x_advance == 7, "find reordered glyph");
+	TEST_ASSERT(rg_text_find_glyph(&font, 0u)->codepoint == '?', "fallback below first key");
+	TEST_ASSERT(rg_text_find_kerning(&font, 'A', '?') == -1, "find first pair with same left key");
+	TEST_ASSERT(rg_text_find_kerning(&font, 'A', 'B') == -2, "find second pair with same left key");
+	TEST_ASSERT(rg_text_find_kerning(&font, 'B', 'A') == -3, "find reordered pair");
+	TEST_ASSERT(rg_text_find_kerning(&font, '?', 'A') == -4, "find lowest pair key");
+	TEST_ASSERT(rg_text_find_kerning(&font, 1114111u, 1114111u) == -5, "find highest pair key");
+	TEST_ASSERT(rg_text_find_kerning(&font, 'A', 'A') == 0, "missing pair between keys");
+	TEST_ASSERT(rg_text_find_kerning(&font, 0u, 0u) == 0, "missing pair below keys");
+	TEST_ASSERT(rg_text_find_kerning(&font, 0xFFFFFFFFu, 0u) == 0, "missing pair above keys");
+
+	// Zero-initialized, manually populated fonts remain valid without sorting.
+	RgTextGlyph manual_glyphs[3] = {{0}};
+	manual_glyphs[0].codepoint = 'B'; manual_glyphs[0].x_advance = 7;
+	manual_glyphs[1].codepoint = '?'; manual_glyphs[1].x_advance = 4;
+	manual_glyphs[2].codepoint = 'A'; manual_glyphs[2].x_advance = 6;
+	RgTextKerning manual_kernings[3] = {{'B', 'A', -3}, {'A', 'B', -2}, {'?', 'A', -4}};
+	RgTextFont manual = {0};
+	manual.metrics.line_height = 8;
+	manual.glyphs = manual_glyphs;
+	manual.glyph_count = RG_ARRAY_COUNT(manual_glyphs);
+	manual.kernings = manual_kernings;
+	manual.kerning_count = RG_ARRAY_COUNT(manual_kernings);
+	manual.fallback_codepoint = '?';
+	TEST_ASSERT(rg_text_find_glyph(&manual, 'A') == &manual_glyphs[2], "find unsorted manual glyph");
+	TEST_ASSERT(rg_text_find_kerning(&manual, 'A', 'B') == -2, "find unsorted manual pair");
+	TEST_ASSERT(float_eq(rg_text_measure_cstr(&manual, "AB", 1.0f).width, 11.0f), "measure manual font");
+	TEST_PASS();
+}
+
+static void test_duplicate_records(void)
+{
+	static const char* duplicates[] = {
+	    "rgfont 1\natlas 8 8\nline_height 8\n"
+	    "glyph 65 0 0 1 1 0 0 1\nglyph 66 0 0 1 1 0 0 1\nglyph 65 0 0 1 1 0 0 1\n",
+	    "rgfont 1\natlas 8 8\nline_height 8\n"
+	    "glyph 65 0 0 1 1 0 0 1\nglyph 65 1 0 2 1 0 0 3\n",
+	    "rgfont 1\natlas 8 8\nline_height 8\nglyph 65 0 0 1 1 0 0 1\n"
+	    "kerning 65 66 -1\nkerning 66 65 -2\nkerning 65 66 -1\n",
+	    "rgfont 1\natlas 8 8\nline_height 8\nglyph 65 0 0 1 1 0 0 1\n"
+	    "kerning 65 66 -1\nkerning 65 66 -3\n",
+	};
+	for (u32 i = 0u; i < RG_ARRAY_COUNT(duplicates); i++)
+	{
+		TEST_ASSERT(!load_rgfont_text(duplicates[i]), "reject identical and conflicting duplicate keys");
+	}
+	TEST_PASS();
+}
+
+static void test_large_unordered_font(void)
+{
+	// Exercise the baker's maximum pair count, with unique keys in a shuffled order.
+	static char data[2u * 1024u * 1024u];
+	static RgTextGlyph glyphs[257];
+	static RgTextKerning kernings[65536];
+	size_t used = 0u;
+	int written = snprintf(data, sizeof(data), "rgfont 1\natlas 8 8\nline_height 8\n");
+	TEST_ASSERT(written > 0, "write large font header");
+	used = (size_t)written;
+	for (u32 i = 0u; i < RG_ARRAY_COUNT(glyphs); i++)
+	{
+		u32 key = (i * 73u) % 257u;
+		written = snprintf(data + used, sizeof(data) - used,
+		                   "glyph %u 0 0 1 1 0 0 %u\n", key + 32u, key % 13u + 1u);
+		TEST_ASSERT(written > 0 && (size_t)written < sizeof(data) - used, "write large glyph record");
+		used += (size_t)written;
+	}
+	for (u32 i = 0u; i < RG_ARRAY_COUNT(kernings); i++)
+	{
+		u32 key = (i * 40503u + 17u) & 65535u;
+		written = snprintf(data + used, sizeof(data) - used, "kerning %u %u %d\n",
+		                   key / 256u + 32u, key % 256u + 32u, (int)(key % 7u) - 3);
+		TEST_ASSERT(written > 0 && (size_t)written < sizeof(data) - used, "write large pair record");
+		used += (size_t)written;
+	}
+	RgTextFont font;
+	RgTextFontLoadDesc load = {0};
+	load.data = data;
+	load.data_size = used;
+	load.glyphs = glyphs;
+	load.glyph_capacity = RG_ARRAY_COUNT(glyphs);
+	load.kernings = kernings;
+	load.kerning_capacity = RG_ARRAY_COUNT(kernings);
+	TEST_ASSERT(rg_text_font_load_rgfont(&font, &load), "load maximum unordered pair table");
+	for (u32 key = 0u; key < RG_ARRAY_COUNT(glyphs); key++)
+	{
+		const RgTextGlyph* glyph = rg_text_find_glyph(&font, key + 32u);
+		TEST_ASSERT(glyph && glyph->codepoint == key + 32u && glyph->x_advance == (i32)(key % 13u + 1u),
+		            "preserve every shuffled glyph record");
+	}
+	for (u32 key = 0u; key < RG_ARRAY_COUNT(kernings); key++)
+	{
+		TEST_ASSERT(rg_text_find_kerning(&font, key / 256u + 32u, key % 256u + 32u) == (i32)(key % 7u) - 3,
+		            "preserve every shuffled pair record");
+	}
+	TEST_ASSERT(rg_text_find_kerning(&font, 288u, 32u) == 0, "miss beyond maximum pair table");
+	TEST_PASS();
+}
+
+static void test_fallback_kerning_and_alignment(void)
+{
+	static const char data[] =
+	    "rgfont 1\natlas 8 8\nline_height 8\nfallback 63\n"
+	    "glyph 65 0 0 1 1 0 0 6\nglyph 63 1 0 1 1 0 0 4\n"
+	    "glyph 66 2 0 1 1 0 0 7\nglyph 32 0 0 0 0 0 0 3\n"
+	    "kerning 63 65 -2\nkerning 65 63 -1\nkerning 65 66 -3\n"
+	    "kerning 65 32 -1\nkerning 32 66 -2\n";
+	RgTextGlyph glyphs[4];
+	RgTextKerning kernings[5];
+	RgTextFont font;
+	RgTextFontLoadDesc load = {0};
+	load.data = data;
+	load.data_size = sizeof(data) - 1u;
+	load.glyphs = glyphs;
+	load.glyph_capacity = RG_ARRAY_COUNT(glyphs);
+	load.kernings = kernings;
+	load.kerning_capacity = RG_ARRAY_COUNT(kernings);
+	TEST_ASSERT(rg_text_font_load_rgfont(&font, &load), "load fallback kerning font");
+	TEST_ASSERT(float_eq(rg_text_measure_cstr(&font, "ZA", 1.0f).width, 8.0f), "kern resolved left fallback");
+	TEST_ASSERT(float_eq(rg_text_measure_cstr(&font, "AZ", 1.0f).width, 9.0f), "kern resolved right fallback");
+	TEST_ASSERT(float_eq(rg_text_measure_cstr(&font, "\xFF" "A", 1.0f).width, 8.0f), "kern invalid UTF-8 fallback");
+
+	RgTextQuad quads[4];
+	RgTextColor white = {1.0f, 1.0f, 1.0f, 1.0f};
+	RgTextBuildDesc build = {0};
+	build.font = &font;
+	build.text = "ZA\r\nAZ";
+	build.text_size = 6u;
+	build.x = 10.0f;
+	build.y = 3.0f;
+	build.scale = 1.0f;
+	build.align = RG_TEXT_ALIGN_CENTER;
+	build.align_width = 20.0f;
+	build.color = white;
+	build.quads = quads;
+	build.quad_capacity = RG_ARRAY_COUNT(quads);
+	TEST_ASSERT(rg_text_build_quads_ex(&build) == 4u, "emit multiline fallback quads");
+	TEST_ASSERT(float_eq(quads[0].x0, 16.0f) && float_eq(quads[1].x0, 18.0f), "center first fallback line");
+	TEST_ASSERT(float_eq(quads[2].x0, 15.5f) && float_eq(quads[3].x0, 20.5f), "center second fallback line");
+	TEST_ASSERT(float_eq(quads[2].y0, 11.0f), "CRLF advances exactly one line");
+	build.align_width = 0.0f;
+	TEST_ASSERT(rg_text_build_quads_ex(&build) == 4u, "automatic multiline alignment width");
+	TEST_ASSERT(float_eq(quads[0].x0, 10.5f) && float_eq(quads[2].x0, 10.0f), "auto width uses resolved kerning");
+	build.align = RG_TEXT_ALIGN_RIGHT;
+	build.align_width = 20.0f;
+	TEST_ASSERT(rg_text_build_quads_ex(&build) == 4u, "right multiline alignment");
+	TEST_ASSERT(float_eq(quads[0].x0, 22.0f) && float_eq(quads[2].x0, 21.0f), "right aligns each line");
+	build.align = RG_TEXT_ALIGN_LEFT;
+	TEST_ASSERT(rg_text_build_quads_ex(&build) == 4u, "left multiline alignment");
+	TEST_ASSERT(float_eq(quads[0].x0, 10.0f) && float_eq(quads[1].x0, 12.0f) &&
+	            float_eq(quads[2].x0, 10.0f), "left alignment ignores alignment width");
+	build.quad_capacity = 1u;
+	quads[1].x0 = 12345.0f;
+	TEST_ASSERT(rg_text_build_quads_ex(&build) == 1u, "truncate to caller capacity");
+	TEST_ASSERT(float_eq(quads[0].x0, 10.0f) && float_eq(quads[1].x0, 12345.0f), "truncation preserves prefix and bounds");
+	TEST_ASSERT(float_eq(rg_text_measure_cstr(&font, "ZAZ", 2.0f).width, 22.0f), "scale fallback kerning on both sides");
+
+	// An absent glyph without fallback breaks adjacency; spaces retain theirs.
+	font.fallback_codepoint = 0u;
+	TEST_ASSERT(float_eq(rg_text_measure_cstr(&font, "AZB", 1.0f).width, 13.0f), "do not kern across missing glyph");
+	TEST_ASSERT(rg_text_build_quads(&font, "AZB", 3u, 0, 0, 1, white, quads, 4u) == 2u &&
+	            float_eq(quads[1].x0, 6.0f), "missing glyph emits nothing and breaks kerning");
+	TEST_ASSERT(rg_text_build_quads(&font, "A B", 3u, 0, 0, 1, white, quads, 4u) == 2u &&
+	            float_eq(quads[1].x0, 6.0f), "zero-area space advances and participates in kerning");
+	TEST_ASSERT(rg_text_build_quads(&font, "A\nB", 3u, 0, 0, 1, white, quads, 4u) == 2u &&
+	            float_eq(quads[1].x0, 0.0f), "newline breaks kerning adjacency");
+	TEST_PASS();
+}
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -363,6 +556,10 @@ int main(int argc, char** argv)
 	test_alignment();
 	test_numeric_boundaries();
 	test_parse_failures();
+	test_unordered_lookup();
+	test_duplicate_records();
+	test_large_unordered_font();
+	test_fallback_kerning_and_alignment();
 
 	printf("\nResults: %d passed, %d failed\n", g_tests_passed, g_tests_failed);
 	return g_tests_failed ? 1 : 0;
