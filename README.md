@@ -4,7 +4,7 @@ Bitmap-font loading, UTF-8 measurement, quad generation, and SDL3 GPU drawing
 for the Reverse Gravity ecosystem.
 
 `rg_text` is intentionally direct: it depends on the sibling
-[`rg_core`](../rg_core) repository, uses the RGFONT text format in `.font`
+[`rg_core`](https://github.com/superwendel/rg_core) repository, uses the RGFONT text format in `.font`
 files, and uses raw RGBA8 atlas images produced by the bake tool. It is basic
 left-to-right bitmap text, not a Unicode shaping engine.
 
