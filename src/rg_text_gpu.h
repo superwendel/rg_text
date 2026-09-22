@@ -507,26 +507,21 @@ RGINLINE int rg_text_gpu_upload_atlas(RgTextGpuRenderer* renderer,
 		return 0;
 	}
 	u32 size = (u32)size64;
-	SDL_GPUTransferBufferCreateInfo transfer_info;
-	memset(&transfer_info, 0, sizeof(transfer_info));
-	transfer_info.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-	transfer_info.size = size;
-
-	SDL_GPUTransferBuffer* transfer = SDL_CreateGPUTransferBuffer(renderer->device, &transfer_info);
-	if (!transfer)
+	RgGpuUploadRing staging = {0};
+	if (!rg_gpu_upload_ring_init(&staging, renderer->device, size))
 	{
 		return 0;
 	}
 
-	void* mapped = SDL_MapGPUTransferBuffer(renderer->device, transfer, false);
-	if (!mapped)
+	rg_gpu_upload_ring_begin(&staging, 0);
+	if (!staging.mapped)
 	{
-		SDL_ReleaseGPUTransferBuffer(renderer->device, transfer);
+		rg_gpu_upload_ring_destroy(&staging);
 		return 0;
 	}
 
 	const u8* source_pixels = (const u8*)pixels;
-	u8* upload_pixels = (u8*)mapped;
+	u8* upload_pixels = (u8*)staging.mapped;
 	for (u32 offset = 0u; offset < size; offset += 4u)
 	{
 		u32 alpha = source_pixels[offset + 3u];
@@ -535,19 +530,19 @@ RGINLINE int rg_text_gpu_upload_atlas(RgTextGpuRenderer* renderer,
 		upload_pixels[offset + 2u] = (u8)(((u32)source_pixels[offset + 2u] * alpha + 127u) / 255u);
 		upload_pixels[offset + 3u] = (u8)alpha;
 	}
-	SDL_UnmapGPUTransferBuffer(renderer->device, transfer);
+	rg_gpu_upload_ring_end(&staging);
 
 	SDL_GPUCommandBuffer* command_buffer = SDL_AcquireGPUCommandBuffer(renderer->device);
 	if (!command_buffer)
 	{
-		SDL_ReleaseGPUTransferBuffer(renderer->device, transfer);
+		rg_gpu_upload_ring_destroy(&staging);
 		return 0;
 	}
 
 	SDL_GPUCopyPass* copy = SDL_BeginGPUCopyPass(command_buffer);
 	SDL_GPUTextureTransferInfo src;
 	memset(&src, 0, sizeof(src));
-	src.transfer_buffer = transfer;
+	src.transfer_buffer = staging.buffer;
 	src.offset = 0;
 	src.pixels_per_row = width;
 	src.rows_per_layer = height;
@@ -568,7 +563,7 @@ RGINLINE int rg_text_gpu_upload_atlas(RgTextGpuRenderer* renderer,
 	SDL_EndGPUCopyPass(copy);
 
 	int ok = SDL_SubmitGPUCommandBuffer(command_buffer) ? 1 : 0;
-	SDL_ReleaseGPUTransferBuffer(renderer->device, transfer);
+	rg_gpu_upload_ring_destroy(&staging);
 	return ok;
 }
 

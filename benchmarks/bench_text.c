@@ -2,16 +2,15 @@
 // Usage: bench_text.exe [optional.font]
 // Compile with optimization. Each run checks indexed results against linear lookup.
 
+#if defined(__linux__) && !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include "../src/rg_text.h"
+#include "rg_time.h"
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
-
-#if defined(_WIN32)
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
 
 #define BENCH_TEXT_SIZE 2000u
 #define BENCH_GLYPH_CAPACITY 65536u
@@ -19,19 +18,6 @@
 
 static volatile double g_checksum;
 static volatile RgTextAlign g_alignment = RG_TEXT_ALIGN_LEFT;
-
-static double bench_seconds(void)
-{
-#if defined(_WIN32)
-	LARGE_INTEGER counter;
-	LARGE_INTEGER frequency;
-	QueryPerformanceCounter(&counter);
-	QueryPerformanceFrequency(&frequency);
-	return (double)counter.QuadPart / (double)frequency.QuadPart;
-#else
-	return (double)clock() / (double)CLOCKS_PER_SEC;
-#endif
-}
 
 static RG_NOINLINE size_t bench_build(RgTextBuildDesc* build)
 {
@@ -108,16 +94,16 @@ static int bench_font(const char* label, const char* data, size_t data_size)
 			fprintf(stderr, "%s: capacity-limited layout differs from full layout\n", label);
 			goto done;
 		}
-		double start = bench_seconds();
+		u64 start = rg_time_ticks();
 		for (u32 i = 0u; i < repetitions; i++)
 		{
 			count = bench_build(&build);
 			g_checksum += (double)count;
 			if (count) g_checksum += (double)quads[count - 1u].x1;
 		}
-		double elapsed = bench_seconds() - start;
+		double elapsed_ms = rg_time_ticks_to_ms(rg_time_ticks() - start);
 		printf("  left capacity=%zu: %.6f ms/call (%u calls)\n",
-		       build.quad_capacity, elapsed * 1000.0 / (double)repetitions, repetitions);
+		       build.quad_capacity, elapsed_ms / (double)repetitions, repetitions);
 	}
 	ok = 1;
 done:
@@ -179,6 +165,7 @@ int main(int argc, char** argv)
 		fprintf(stderr, "Usage: %s [optional.font]\n", argv[0]);
 		return 1;
 	}
+	rg_time_init();
 	printf("rg_text optimized layout benchmark; checks use linear lookup as a reference\n");
 	for (u32 test = 0u; test < 2u; test++)
 	{

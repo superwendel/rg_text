@@ -269,6 +269,8 @@ jobs:
 
           "$CC" "${common[@]}" tests/test_text.c -lm \
             -o "$output_dir/test_text"
+          "$CC" "${common[@]}" -DNDEBUG tests/test_text.c -lm \
+            -o "$output_dir/test_text_release"
           "$CC" "${sdl_common[@]}" tests/test_text_gpu.c \
             "${sdl_libs[@]}" -lm -o "$output_dir/test_text_gpu"
           "$CC" "${sdl_common[@]}" tests/test_text_gpu_pack.c \
@@ -285,6 +287,7 @@ jobs:
             "${sdl_libs[@]}" -lm -o "$output_dir/bench_gpu_pack"
 
           "$output_dir/test_text"
+          "$output_dir/test_text_release"
           "$output_dir/test_text_gpu"
           "$output_dir/test_text_gpu_pack"
           "$output_dir/test_text_gpu_pack_sse2"

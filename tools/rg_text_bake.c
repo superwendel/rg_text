@@ -851,7 +851,7 @@ static u32 choose_fallback_codepoint(const BakedGlyph* glyphs, u32 glyph_count)
 {
 	static const u32 preferred[] = {0x003Fu, 0xFFFDu};
 	for (u32 preferred_index = 0u;
-	     preferred_index < (u32)(sizeof(preferred) / sizeof(preferred[0]));
+	     preferred_index < (u32)RG_ARRAY_COUNT(preferred);
 	     preferred_index++)
 	{
 		for (u32 glyph_index = 0u; glyph_index < glyph_count; glyph_index++)
@@ -911,7 +911,7 @@ static int shape_pair(hb_font_t* font,
 	    HB_TAG('c', 'a', 'l', 't'),
 	    HB_TAG('r', 'c', 'l', 't'),
 	};
-	hb_feature_t features[1u + sizeof(disabled_tags) / sizeof(disabled_tags[0])];
+	hb_feature_t features[1u + RG_ARRAY_COUNT(disabled_tags)];
 	features[0].tag = HB_TAG('k', 'e', 'r', 'n');
 	features[0].value = enable_kerning ? 1u : 0u;
 	features[0].start = HB_FEATURE_GLOBAL_START;
@@ -1426,7 +1426,7 @@ int main(int argc, char** argv)
 				return 1;
 			}
 			if (!parse_range_list(range_arg, ranges,
-			                      (u32)(sizeof(ranges) / sizeof(ranges[0])),
+			                      (u32)RG_ARRAY_COUNT(ranges),
 			                      &range_count))
 			{
 				return 1;

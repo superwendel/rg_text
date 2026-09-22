@@ -4,6 +4,10 @@
 text, and emits renderer-neutral quads. The runtime performs no file I/O or
 allocation.
 
+The runtime uses `rg_defs.h` and typed sorting from `rg_algo.h` in `rg_core`.
+Font loading uses a fixed local sort stack (about 1.5 KiB per sort with the
+default core configuration on 64-bit platforms); layout does not use it.
+
 ## Scope
 
 - Basic left-to-right bitmap text

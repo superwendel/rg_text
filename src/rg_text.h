@@ -42,6 +42,7 @@
 #define RG_TEXT_H
 
 #include "rg_defs.h"
+#include "rg_algo.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -53,10 +54,6 @@
 #ifndef RG_TEXT_ASSERT
 #include <assert.h>
 #define RG_TEXT_ASSERT(x) assert(x)
-#endif
-
-#ifndef RG_TEXT_UNUSED
-#define RG_TEXT_UNUSED(x) (void)(x)
 #endif
 
 #define RG_TEXT_REPLACEMENT_CODEPOINT 0xFFFDu
@@ -265,74 +262,41 @@ typedef struct RgTextToken
 
 #define RG_TEXT_LOOKUP_SORTED 1u
 
+RGINLINE int rg_text_glyph_key_less(const RgTextGlyph* a, const RgTextGlyph* b)
+{
+	return a->codepoint < b->codepoint;
+}
+
 RGINLINE int rg_text_kerning_key_less(const RgTextKerning* a, const RgTextKerning* b)
 {
 	return a->left < b->left || (a->left == b->left && a->right < b->right);
 }
 
-RGINLINE void rg_text_glyph_sift_down(RgTextGlyph* glyphs, u32 root, u32 count)
-{
-	RgTextGlyph value = glyphs[root];
-	while (root < count / 2u)
-	{
-		u32 child = root * 2u + 1u;
-		if (child + 1u < count && glyphs[child].codepoint < glyphs[child + 1u].codepoint)
-		{
-			child++;
-		}
-		if (value.codepoint >= glyphs[child].codepoint) break;
-		glyphs[root] = glyphs[child];
-		root = child;
-	}
-	glyphs[root] = value;
-}
+// rg_algo also generates stable-sort helpers with assertion-only variables.
+// Scope these diagnostics to the generated code for release/custom-assert builds.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-parameter"
+#pragma clang diagnostic ignored "-Wunused-variable"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4100 4189)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#endif
 
-RGINLINE void rg_text_sort_glyphs(RgTextGlyph* glyphs, u32 count)
-{
-	for (u32 start = count / 2u; start > 0u; start--)
-	{
-		rg_text_glyph_sift_down(glyphs, start - 1u, count);
-	}
-	for (u32 end = count; end > 1u; end--)
-	{
-		RgTextGlyph value = glyphs[0];
-		glyphs[0] = glyphs[end - 1u];
-		glyphs[end - 1u] = value;
-		rg_text_glyph_sift_down(glyphs, 0u, end - 1u);
-	}
-}
+RG_ALGO_DEFINE(RgTextGlyph, rg_text_glyph, rg_text_glyph_key_less)
+RG_ALGO_DEFINE(RgTextKerning, rg_text_kerning, rg_text_kerning_key_less)
 
-RGINLINE void rg_text_kerning_sift_down(RgTextKerning* kernings, u32 root, u32 count)
-{
-	RgTextKerning value = kernings[root];
-	while (root < count / 2u)
-	{
-		u32 child = root * 2u + 1u;
-		if (child + 1u < count && rg_text_kerning_key_less(&kernings[child], &kernings[child + 1u]))
-		{
-			child++;
-		}
-		if (!rg_text_kerning_key_less(&value, &kernings[child])) break;
-		kernings[root] = kernings[child];
-		root = child;
-	}
-	kernings[root] = value;
-}
-
-RGINLINE void rg_text_sort_kernings(RgTextKerning* kernings, u32 count)
-{
-	for (u32 start = count / 2u; start > 0u; start--)
-	{
-		rg_text_kerning_sift_down(kernings, start - 1u, count);
-	}
-	for (u32 end = count; end > 1u; end--)
-	{
-		RgTextKerning value = kernings[0];
-		kernings[0] = kernings[end - 1u];
-		kernings[end - 1u] = value;
-		rg_text_kerning_sift_down(kernings, 0u, end - 1u);
-	}
-}
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 RGINLINE int rg_text_token_equal(RgTextToken token, const char* literal)
 {
@@ -901,9 +865,9 @@ RGINLINE int rg_text_font_load_rgfont(RgTextFont* font, const RgTextFontLoadDesc
 		}
 	}
 
-	// Heapsort keeps load time O(n log n) without allocation or recursion.
-	rg_text_sort_glyphs(font->glyphs, glyph_count);
-	rg_text_sort_kernings(font->kernings, kerning_count);
+	// Core introsort bounds load time to O(n log n), using a fixed local stack.
+	rg_algo_sort_rg_text_glyph(font->glyphs, glyph_count);
+	rg_algo_sort_rg_text_kerning(font->kernings, kerning_count);
 	for (u32 i = 1u; i < glyph_count; i++)
 	{
 		if (font->glyphs[i - 1u].codepoint == font->glyphs[i].codepoint) return 0;

@@ -53,7 +53,8 @@ baker or downloaded font. Escape or closing the window exits; use
 `build.bat bench` reports layout costs for a generated font. To benchmark a
 real asset, use `build.bat bench path\to\font.font`. It measures complete
 left-aligned lines and a one-quad output limit; timing is informational and
-is not used as a CI pass/fail threshold.
+is not used as a CI pass/fail threshold. It uses `rg_time` for monotonic elapsed
+timing on each platform.
 
 `build.bat bench_gpu_pack` compares the original packing loop, optimized C,
 SSE2 intrinsics, and handwritten Windows x64 assembly on the same machine.
