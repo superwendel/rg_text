@@ -25,7 +25,7 @@ See [the API and format notes](docs/rg_text.md) for usage.
 
 ## Build and test
 
-From a Visual Studio Developer Command Prompt:
+From an x64 Visual Studio Developer Command Prompt:
 
 ```bat
 build.bat test
@@ -33,11 +33,13 @@ build.bat test_ci
 build.bat shaders
 build.bat example
 build.bat bench
+build.bat bench_gpu_pack
 ```
 
 `test` runs the renderer-neutral suite only and never silently skips GPU work.
-`test_ci` additionally requires SDL3, compiles the GPU device test, example,
-and benchmark, and translates every shader backend. `test_release` is the
+`test_ci` additionally requires SDL3, tests C, SSE2, and assembly quad packing, verifies
+the x64 assembly benchmark, compiles the GPU device test and example, and
+translates every shader backend. `test_release` is the
 strict local release gate: it also builds the optional baker, bakes the Inter
 test font named by `RG_TEXT_TEST_FONT`, runs the SDL_GPU pixel-readback tests,
 and smoke-tests the example. The device test accepts a backend name, for example
@@ -52,6 +54,16 @@ baker or downloaded font. Escape or closing the window exits; use
 real asset, use `build.bat bench path\to\font.font`. It measures complete
 left-aligned lines and a one-quad output limit; timing is informational and
 is not used as a CI pass/fail threshold.
+
+`build.bat bench_gpu_pack` compares the original packing loop, optimized C,
+SSE2 intrinsics, and handwritten Windows x64 assembly on the same machine.
+It checks identical output before timing. See [the packing experiment](docs/quad_packing.md)
+for the method and results. The GPU helper defaults to portable C; define
+`RG_TEXT_GPU_USE_SSE2=1` before including it to enable SSE2. For `build.bat`
+application and device-test targets, use `set RG_TEXT_GPU_USE_SSE2=1`.
+Windows x64 also supports `RG_TEXT_GPU_USE_ASM=1`: assemble and link
+`src/asm/rg_text_gpu_pack_quads_x64.asm`, or set that environment variable
+when using `build.bat`. Enable only one optimized path at a time.
 
 The public baker round-trip uses renderer-version-tolerant structural checks.
 Pinned CI also sets `RG_TEXT_BAKER_GOLDEN=1` to lock selected Inter 4.1 glyph,

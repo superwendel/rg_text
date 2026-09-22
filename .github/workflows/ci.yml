@@ -188,9 +188,13 @@ jobs:
           foreach ($artifact in @(
             'test_text.exe',
             'test_text_gpu.exe',
+            'test_text_gpu_pack.exe',
+            'test_text_gpu_pack_sse2.exe',
+            'test_text_gpu_pack_asm.exe',
             'test_text_gpu_device.exe',
             'hello_text.exe',
             'bench_text.exe',
+            'bench_gpu_pack.exe',
             'rg_text_bake.exe'
           )) {
             $path = Join-Path $env:GITHUB_WORKSPACE $artifact
@@ -267,15 +271,24 @@ jobs:
             -o "$output_dir/test_text"
           "$CC" "${sdl_common[@]}" tests/test_text_gpu.c \
             "${sdl_libs[@]}" -lm -o "$output_dir/test_text_gpu"
+          "$CC" "${sdl_common[@]}" tests/test_text_gpu_pack.c \
+            "${sdl_libs[@]}" -lm -o "$output_dir/test_text_gpu_pack"
+          "$CC" "${sdl_common[@]}" -DRG_TEXT_GPU_USE_SSE2=1 tests/test_text_gpu_pack.c \
+            "${sdl_libs[@]}" -lm -o "$output_dir/test_text_gpu_pack_sse2"
           "$CC" "${sdl_common[@]}" tests/test_text_gpu_device.c \
             "${sdl_libs[@]}" -lm -o "$output_dir/test_text_gpu_device"
           "$CC" "${sdl_common[@]}" examples/hello_text.c \
             "${sdl_libs[@]}" -lm -o "$output_dir/hello_text"
           "$CC" "${common[@]}" benchmarks/bench_text.c -lm \
             -o "$output_dir/bench_text"
+          "$CC" "${sdl_common[@]}" benchmarks/bench_gpu_pack.c \
+            "${sdl_libs[@]}" -lm -o "$output_dir/bench_gpu_pack"
 
           "$output_dir/test_text"
           "$output_dir/test_text_gpu"
+          "$output_dir/test_text_gpu_pack"
+          "$output_dir/test_text_gpu_pack_sse2"
+          "$output_dir/bench_gpu_pack" --verify-only
           echo 'GPU device execution is intentionally excluded on GitHub-hosted runners.'
 
   sanitizers:

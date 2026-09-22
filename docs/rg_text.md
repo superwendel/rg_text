@@ -98,6 +98,24 @@ with the format supplied at creation, single sampling, and no depth attachment.
 See [the runnable example](../examples/hello_text.c) for the complete setup,
 frame ordering, projection, and cleanup.
 
+Quad packing uses portable C by default. On x86 with SSE2 enabled (including
+x64), define `RG_TEXT_GPU_USE_SSE2=1` before including `rg_text_gpu.h` to use
+the optional SIMD kernel. It needs no extra object file, runtime CPU dispatch,
+or 16-byte buffer alignment; the target must support SSE2. Other architectures
+use the default C implementation. Source quads must not overlap the renderer
+or its output buffers. Both paths preserve the same vertex/index layout.
+See [the packing benchmark](quad_packing.md) for measured costs and how to
+repeat the C, intrinsics, and assembly comparison.
+
+Windows x64 can instead define `RG_TEXT_GPU_USE_ASM=1` and link the object
+assembled from `src/asm/rg_text_gpu_pack_quads_x64.asm` with MASM (`ml64`).
+The handwritten batch kernel uses baseline SSE2 and requires no CPU dispatch.
+Do not enable both options. `build.bat` assembles and links the object for
+application, GPU compile, and device targets when the `RG_TEXT_GPU_USE_ASM`
+environment variable is `1`. Dedicated packing tests exercise their named path;
+the benchmark compares all supported paths. The portable C default supports
+other architectures.
+
 Atlas input pixels use straight alpha and are copied during upload. The GPU
 copy stores premultiplied RGB so interpolation across transparent padding
 preserves edge brightness. The supplied fragment shader also multiplies tint

@@ -4,6 +4,17 @@ setlocal
 set "TARGET=%~1"
 if not defined TARGET set "TARGET=test"
 if not defined RG_CORE_DIR set "RG_CORE_DIR=%~dp0..\rg_core"
+set "GPU_PACK_DEFINE="
+set "GPU_PACK_OBJECT="
+if "%RG_TEXT_GPU_USE_SSE2%"=="1" set "GPU_PACK_DEFINE=/DRG_TEXT_GPU_USE_SSE2=1"
+if "%RG_TEXT_GPU_USE_ASM%"=="1" (
+	if "%RG_TEXT_GPU_USE_SSE2%"=="1" (
+		echo Choose only one of RG_TEXT_GPU_USE_ASM and RG_TEXT_GPU_USE_SSE2.
+		exit /b 1
+	)
+	set "GPU_PACK_DEFINE=/DRG_TEXT_GPU_USE_ASM=1"
+	set "GPU_PACK_OBJECT=rg_text_gpu_pack_quads_x64.obj"
+)
 
 if /I "%TARGET%"=="clean" goto clean
 if /I "%TARGET%"=="test" goto test
@@ -12,6 +23,9 @@ if /I "%TARGET%"=="test_release" goto test_release
 if /I "%TARGET%"=="test_text" goto test_text
 if /I "%TARGET%"=="test_gpu" goto test_gpu
 if /I "%TARGET%"=="test_gpu_compile" goto test_gpu_compile
+if /I "%TARGET%"=="test_gpu_pack" goto test_gpu_pack
+if /I "%TARGET%"=="test_gpu_pack_sse2" goto test_gpu_pack_sse2
+if /I "%TARGET%"=="test_gpu_pack_asm" goto test_gpu_pack_asm
 if /I "%TARGET%"=="test_gpu_device_build" goto test_gpu_device_build
 if /I "%TARGET%"=="test_gpu_device" goto test_gpu_device
 if /I "%TARGET%"=="test_baker" goto test_baker
@@ -19,6 +33,8 @@ if /I "%TARGET%"=="shaders" goto shaders
 if /I "%TARGET%"=="rg_text_bake" goto rg_text_bake
 if /I "%TARGET%"=="bench" goto bench
 if /I "%TARGET%"=="bench_build" goto bench_build
+if /I "%TARGET%"=="bench_gpu_pack" goto bench_gpu_pack
+if /I "%TARGET%"=="bench_gpu_pack_build" goto bench_gpu_pack_build
 if /I "%TARGET%"=="example" goto example
 if /I "%TARGET%"=="example_build" goto example_build
 
@@ -54,6 +70,13 @@ if not exist "%RG_CORE_DIR%\src\rg_defs.h" (
 	echo rg_core not found. Set RG_CORE_DIR to the rg_core repository root.
 	exit /b 1
 )
+exit /b 0
+
+:prepare_gpu_pack
+if not defined GPU_PACK_OBJECT exit /b 0
+ml64 /nologo /c /Forg_text_gpu_pack_quads_x64.obj src\asm\rg_text_gpu_pack_quads_x64.asm
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
 exit /b 0
 
 :find_sdl
@@ -137,6 +160,18 @@ if not errorlevel 0 exit /b 1
 call "%~f0" test_gpu_compile
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
+call "%~f0" test_gpu_pack
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call "%~f0" test_gpu_pack_sse2
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call "%~f0" test_gpu_pack_asm
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call "%~f0" bench_gpu_pack --verify-only
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
 call "%~f0" shaders
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
@@ -205,10 +240,86 @@ if not errorlevel 0 (
 
 set "PATH=%SDL3_BIN_DIR%;%SDL3_LIB_DIR%;%PATH%"
 echo Building rg_text_gpu compile and layout checks; no GPU device will be used...
-cl /nologo /std:c11 /W4 /WX /O2 /I "%RG_CORE_DIR%\src" /I "%SDL3_INCLUDE_DIR%" tests\test_text_gpu.c /Fe:test_text_gpu.exe /link /LIBPATH:"%SDL3_LIB_DIR%" SDL3.lib
+call :prepare_gpu_pack
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+cl /nologo /std:c11 /W4 /WX /O2 %GPU_PACK_DEFINE% /I "%RG_CORE_DIR%\src" /I "%SDL3_INCLUDE_DIR%" tests\test_text_gpu.c %GPU_PACK_OBJECT% /Fe:test_text_gpu.exe /link /LIBPATH:"%SDL3_LIB_DIR%" SDL3.lib
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 test_text_gpu.exe
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+exit /b 0
+
+:test_gpu_pack_sse2
+set "GPU_PACK_DEFINE=/DRG_TEXT_GPU_USE_SSE2=1"
+set "GPU_PACK_OBJECT="
+set "PACK_TEST_EXE=test_text_gpu_pack_sse2.exe"
+goto test_gpu_pack_build
+
+:test_gpu_pack_asm
+set "GPU_PACK_DEFINE=/DRG_TEXT_GPU_USE_ASM=1"
+set "GPU_PACK_OBJECT=rg_text_gpu_pack_quads_x64.obj"
+set "PACK_TEST_EXE=test_text_gpu_pack_asm.exe"
+goto test_gpu_pack_build
+
+:test_gpu_pack
+rem Always exercise the portable default, even if application builds opt in.
+set "GPU_PACK_DEFINE="
+set "GPU_PACK_OBJECT="
+set "PACK_TEST_EXE=test_text_gpu_pack.exe"
+
+:test_gpu_pack_build
+call :ensure_compiler
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call :validate_core
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call :find_sdl
+if errorlevel 1 (
+	echo SDL3 not found. Set SDL3_DIR to the SDL3 development package root.
+	exit /b 1
+)
+set "PATH=%SDL3_BIN_DIR%;%SDL3_LIB_DIR%;%PATH%"
+call :prepare_gpu_pack
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+cl /nologo /std:c11 /W4 /WX /O2 %GPU_PACK_DEFINE% /I "%RG_CORE_DIR%\src" /I "%SDL3_INCLUDE_DIR%" tests\test_text_gpu_pack.c %GPU_PACK_OBJECT% /Fe:%PACK_TEST_EXE% /link /LIBPATH:"%SDL3_LIB_DIR%" SDL3.lib
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+%PACK_TEST_EXE%
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+exit /b 0
+
+:bench_gpu_pack
+call :bench_gpu_pack_build
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+bench_gpu_pack.exe %2
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+exit /b 0
+
+:bench_gpu_pack_build
+call :ensure_compiler
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call :validate_core
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call :find_sdl
+if errorlevel 1 (
+	echo SDL3 not found. Set SDL3_DIR to the SDL3 development package root.
+	exit /b 1
+)
+set "PATH=%SDL3_BIN_DIR%;%SDL3_LIB_DIR%;%PATH%"
+rem The optional assembly comparison uses the Windows x64 ABI.
+ml64 /nologo /c /Forg_text_gpu_pack_quads_x64.obj src\asm\rg_text_gpu_pack_quads_x64.asm
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+cl /nologo /std:c11 /W4 /WX /O2 /DRG_TEXT_BENCH_ASM=1 /I "%RG_CORE_DIR%\src" /I "%SDL3_INCLUDE_DIR%" benchmarks\bench_gpu_pack.c rg_text_gpu_pack_quads_x64.obj /Fe:bench_gpu_pack.exe /link /LIBPATH:"%SDL3_LIB_DIR%" SDL3.lib
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 exit /b 0
@@ -264,7 +375,10 @@ if errorlevel 1 (
 )
 if not errorlevel 0 exit /b 1
 set "PATH=%SDL3_BIN_DIR%;%SDL3_LIB_DIR%;%PATH%"
-cl /nologo /std:c11 /W4 /WX /O2 /I "%RG_CORE_DIR%\src" /I "%SDL3_INCLUDE_DIR%" examples\hello_text.c /Fe:hello_text.exe /link /LIBPATH:"%SDL3_LIB_DIR%" SDL3.lib
+call :prepare_gpu_pack
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+cl /nologo /std:c11 /W4 /WX /O2 %GPU_PACK_DEFINE% /I "%RG_CORE_DIR%\src" /I "%SDL3_INCLUDE_DIR%" examples\hello_text.c %GPU_PACK_OBJECT% /Fe:hello_text.exe /link /LIBPATH:"%SDL3_LIB_DIR%" SDL3.lib
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 exit /b 0
@@ -300,7 +414,10 @@ if not errorlevel 0 (
 )
 set "PATH=%SDL3_BIN_DIR%;%SDL3_LIB_DIR%;%PATH%"
 echo Building rg_text SDL_GPU device test...
-cl /nologo /std:c11 /W4 /WX /O2 /I "%RG_CORE_DIR%\src" /I "%SDL3_INCLUDE_DIR%" tests\test_text_gpu_device.c /Fe:test_text_gpu_device.exe /link /LIBPATH:"%SDL3_LIB_DIR%" SDL3.lib
+call :prepare_gpu_pack
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+cl /nologo /std:c11 /W4 /WX /O2 %GPU_PACK_DEFINE% /I "%RG_CORE_DIR%\src" /I "%SDL3_INCLUDE_DIR%" tests\test_text_gpu_device.c %GPU_PACK_OBJECT% /Fe:test_text_gpu_device.exe /link /LIBPATH:"%SDL3_LIB_DIR%" SDL3.lib
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 exit /b 0
@@ -334,6 +451,7 @@ for %%s in (vert frag) do (
 	if "%%s"=="frag" set "SHADER_STAGE=fragment"
 	call :compile_shader %%s
 	if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
 	if not errorlevel 0 exit /b 1
 )
 echo rg_text shaders compiled successfully.
@@ -450,6 +568,8 @@ echo Failed to remove baker integration-test outputs: %BAKE_TEST_DIR%
 exit /b 1
 
 :clean
+del /q test_text_gpu_pack_asm.exe rg_text_gpu_pack_quads_x64.obj 2>nul
+del /q test_text_gpu_pack.exe test_text_gpu_pack_sse2.exe bench_gpu_pack.exe test_text_gpu_pack.obj bench_gpu_pack.obj 2>nul
 del /q test_text.exe test_text_gpu.exe test_text_gpu_device.exe test_bake_output.exe rg_text_bake.exe bench_text.exe hello_text.exe 2>nul
 del /q test_text.obj test_text_gpu.obj test_text_gpu_device.obj test_bake_output.obj rg_text_bake.obj bench_text.obj hello_text.obj 2>nul
 if exist "shaders\Compiled" rmdir /s /q "shaders\Compiled"
@@ -459,6 +579,10 @@ for %%f in (test_text.exe test_text_gpu.exe test_text_gpu_device.exe test_bake_o
 )
 if exist "shaders\Compiled" (
 	echo Failed to remove compiled shader directory: shaders\Compiled
+	exit /b 1
+)
+for %%f in (test_text_gpu_pack.exe test_text_gpu_pack_sse2.exe test_text_gpu_pack_asm.exe bench_gpu_pack.exe test_text_gpu_pack.obj bench_gpu_pack.obj rg_text_gpu_pack_quads_x64.obj) do if exist "%%f" (
+	echo Failed to remove build artifact: %%f
 	exit /b 1
 )
 exit /b 0

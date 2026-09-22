@@ -1,0 +1,125 @@
+rg_text quad packing comparison, 2026-09-22
+CPU: Intel Core i7-12700KF, 20 logical processors
+OS: Windows x64; SDL3 3.4.10
+Affinity: inherited logical CPU 0 (mask 0x1) from launching process
+Power settings: unchanged, not recorded; no benchmark priority changes
+Reference: frozen queue implementation from commit cf3c982
+C/SSE2: final src/rg_text_gpu.h; ASM: src/asm/rg_text_gpu_pack_quads_x64.asm
+MSVC 19.44.35219: /std:c11 /O2 /W4 /WX, no /GL, no AVX target option
+Clang 19.1.5: -std=c99 -pedantic-errors -O2 -Wall -Wextra -Werror, no LTO
+Seven alternating trials/case; same data and buffers for all methods within each run.
+CPU packing only, not layout/upload/rendering or whole-frame throughput.
+
+MSVC run 1
+ Assembling: src\asm\rg_text_gpu_pack_quads_x64.asm
+bench_gpu_pack.c
+Compiler: MSVC 194435219
+Platform: Windows; logical CPUs: 20; SSE2: yes; ASM comparison: enabled
+CPU packing only; seven alternating trials; benchmark does not set affinity; compile optimized without LTO.
+
+quads=1 buffers=1 working_set=0.000 MiB iterations=2000000
+  original     median=    10.774 ns min=    10.682 max=    11.652 original/median=1.000x
+  portable C   median=    10.813 ns min=     9.961 max=    11.509 original/median=0.996x
+  SSE2         median=     5.243 ns min=     4.892 max=     6.231 original/median=2.055x
+  x64 assembly median=     5.622 ns min=     5.301 max=     5.834 original/median=1.916x
+
+quads=16 buffers=1 working_set=0.003 MiB iterations=750000
+  original     median=   122.953 ns min=   120.792 max=   127.408 original/median=1.000x
+  portable C   median=    84.452 ns min=    83.154 max=    95.681 original/median=1.456x
+  SSE2         median=    36.623 ns min=    34.238 max=    37.867 original/median=3.357x
+  x64 assembly median=    34.499 ns min=    32.599 max=    35.604 original/median=3.564x
+
+quads=1656 buffers=1 working_set=0.341 MiB iterations=7246
+  original     median= 14415.981 ns min= 14281.341 max= 14693.376 original/median=1.000x
+  portable C   median= 12337.276 ns min= 11999.834 max= 12728.843 original/median=1.168x
+  SSE2         median=  8737.648 ns min=  8404.982 max= 10020.218 original/median=1.650x
+  x64 assembly median=  7175.780 ns min=  6971.750 max=  9719.004 original/median=2.009x
+
+quads=8192 buffers=1 working_set=1.688 MiB iterations=1464
+  original     median= 81491.393 ns min= 78197.199 max= 84000.751 original/median=1.000x
+  portable C   median= 72420.697 ns min= 69958.538 max= 82164.208 original/median=1.125x
+  SSE2         median= 57442.896 ns min= 55113.046 max= 61265.779 original/median=1.419x
+  x64 assembly median= 47992.350 ns min= 45685.656 max= 53305.328 original/median=1.698x
+
+quads=8192 buffers=64 working_set=108.000 MiB iterations=1464
+  original     median=118904.781 ns min=117492.077 max=138435.792 original/median=1.000x
+  portable C   median=122921.107 ns min=110555.464 max=143776.981 original/median=0.967x
+  SSE2         median=106065.232 ns min= 93244.399 max=131757.036 original/median=1.121x
+  x64 assembly median=104963.525 ns min= 98061.270 max=114147.951 original/median=1.133x
+
+Bitwise, boundary, and counter checks passed. Checksum: 1534555044813998952
+
+MSVC run 2
+Compiler: MSVC 194435219
+Platform: Windows; logical CPUs: 20; SSE2: yes; ASM comparison: enabled
+CPU packing only; seven alternating trials; benchmark does not set affinity; compile optimized without LTO.
+
+quads=1 buffers=1 working_set=0.000 MiB iterations=2000000
+  original     median=    10.467 ns min=    10.225 max=    10.617 original/median=1.000x
+  portable C   median=     9.417 ns min=     9.281 max=    10.241 original/median=1.112x
+  SSE2         median=     5.068 ns min=     4.665 max=     5.424 original/median=2.065x
+  x64 assembly median=     5.243 ns min=     5.044 max=     5.418 original/median=1.996x
+
+quads=16 buffers=1 working_set=0.003 MiB iterations=750000
+  original     median=   118.776 ns min=   114.219 max=   125.088 original/median=1.000x
+  portable C   median=    81.544 ns min=    79.145 max=    84.472 original/median=1.457x
+  SSE2         median=    34.599 ns min=    33.308 max=    43.095 original/median=3.433x
+  x64 assembly median=    32.450 ns min=    31.533 max=    32.619 original/median=3.660x
+
+quads=1656 buffers=1 working_set=0.341 MiB iterations=7246
+  original     median= 14402.236 ns min= 14176.898 max= 22407.701 original/median=1.000x
+  portable C   median= 12010.461 ns min= 11705.631 max= 12561.110 original/median=1.199x
+  SSE2         median=  8266.975 ns min=  8103.754 max=  9094.148 original/median=1.742x
+  x64 assembly median=  6671.543 ns min=  6505.299 max=  6709.799 original/median=2.159x
+
+quads=8192 buffers=1 working_set=1.688 MiB iterations=1464
+  original     median= 78537.842 ns min= 77994.536 max= 79503.210 original/median=1.000x
+  portable C   median= 68762.978 ns min= 68452.254 max= 71070.628 original/median=1.142x
+  SSE2         median= 52274.932 ns min= 51058.265 max= 55956.216 original/median=1.502x
+  x64 assembly median= 44802.459 ns min= 43791.598 max= 45486.954 original/median=1.753x
+
+quads=8192 buffers=64 working_set=108.000 MiB iterations=1464
+  original     median=115212.158 ns min=113207.650 max=122489.344 original/median=1.000x
+  portable C   median=112573.839 ns min=105788.388 max=116539.276 original/median=1.023x
+  SSE2         median= 94273.566 ns min= 90412.090 max=119552.596 original/median=1.222x
+  x64 assembly median= 97899.112 ns min= 95753.620 max=105802.596 original/median=1.177x
+
+Bitwise, boundary, and counter checks passed. Checksum: 1534555044813998952
+
+Clang run
+Compiler: Clang 19.1.5 
+Platform: Windows; logical CPUs: 20; SSE2: yes; ASM comparison: enabled
+CPU packing only; seven alternating trials; benchmark does not set affinity; compile optimized without LTO.
+
+quads=1 buffers=1 working_set=0.000 MiB iterations=2000000
+  original     median=    10.519 ns min=    10.117 max=    11.482 original/median=1.000x
+  portable C   median=     6.133 ns min=     5.867 max=     6.578 original/median=1.715x
+  SSE2         median=     5.617 ns min=     5.499 max=     5.874 original/median=1.873x
+  x64 assembly median=     5.892 ns min=     5.703 max=     5.980 original/median=1.785x
+
+quads=16 buffers=1 working_set=0.003 MiB iterations=750000
+  original     median=    91.771 ns min=    89.942 max=    94.327 original/median=1.000x
+  portable C   median=    57.467 ns min=    56.296 max=    57.789 original/median=1.597x
+  SSE2         median=    32.906 ns min=    31.068 max=    33.775 original/median=2.789x
+  x64 assembly median=    31.830 ns min=    31.071 max=    32.640 original/median=2.883x
+
+quads=1656 buffers=1 working_set=0.341 MiB iterations=7246
+  original     median= 13476.401 ns min= 13374.469 max= 14246.660 original/median=1.000x
+  portable C   median=  9724.924 ns min=  9595.253 max= 10140.698 original/median=1.386x
+  SSE2         median=  6568.107 ns min=  6490.464 max=  6702.539 original/median=2.052x
+  x64 assembly median=  6558.819 ns min=  6525.214 max=  6761.510 original/median=2.055x
+
+quads=8192 buffers=1 working_set=1.688 MiB iterations=1464
+  original     median= 73412.842 ns min= 73041.393 max= 74997.473 original/median=1.000x
+  portable C   median= 54279.372 ns min= 52158.948 max= 54938.934 original/median=1.352x
+  SSE2         median= 41947.951 ns min= 40576.913 max= 43640.984 original/median=1.750x
+  x64 assembly median= 42101.571 ns min= 40865.779 max= 43766.598 original/median=1.744x
+
+quads=8192 buffers=64 working_set=108.000 MiB iterations=1464
+  original     median=110067.145 ns min=106097.199 max=113974.863 original/median=1.000x
+  portable C   median=104508.060 ns min=100475.410 max=106521.995 original/median=1.053x
+  SSE2         median= 95899.522 ns min= 90538.183 max= 97165.779 original/median=1.148x
+  x64 assembly median= 92612.568 ns min= 88484.631 max= 97469.331 original/median=1.188x
+
+Bitwise, boundary, and counter checks passed. Checksum: 1534555044813998952
+

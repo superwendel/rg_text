@@ -15,7 +15,8 @@
 //   - Compiled shaders are loaded through rg_gpu from the supplied shader root.
 //   - Atlas inputs use straight-alpha RGBA8. Uploads premultiply RGB for filtering;
 //     fragment shaders must output premultiplied color, including vertex opacity.
-//   - All functions have internal linkage and work in unity builds.
+//   - Header functions have internal linkage and work in unity builds. The
+//     optional Windows x64 assembly kernel is linked as one external object.
 //
 // Author: Steven Wendel (superwendel)
 
@@ -42,6 +43,35 @@
 #define RG_TEXT_GPU_DEFAULT_MAX_QUADS 8192u
 #endif
 
+// Optional SSE2 quad packing. The portable C path remains the default.
+// Define to 1 before including this header on an SSE2-capable x86 target.
+#ifndef RG_TEXT_GPU_USE_SSE2
+#define RG_TEXT_GPU_USE_SSE2 0
+#endif
+
+// Optional Windows x64 assembly packing. Assemble and link
+// src/asm/rg_text_gpu_pack_quads_x64.asm when this is enabled.
+#ifndef RG_TEXT_GPU_USE_ASM
+#define RG_TEXT_GPU_USE_ASM 0
+#endif
+
+#if RG_TEXT_GPU_USE_ASM && RG_TEXT_GPU_USE_SSE2
+#error Enable only one of RG_TEXT_GPU_USE_ASM and RG_TEXT_GPU_USE_SSE2
+#endif
+
+#if RG_TEXT_GPU_USE_ASM
+#if !defined(_WIN32) || (!defined(_M_X64) && !defined(__x86_64__))
+#error RG_TEXT_GPU_USE_ASM requires a Windows x64 target
+#endif
+#endif
+
+#if RG_TEXT_GPU_USE_SSE2
+#if !defined(__SSE2__) && !defined(_M_X64) && !(defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#error RG_TEXT_GPU_USE_SSE2 requires an x86 target with SSE2 enabled
+#endif
+#include <emmintrin.h>
+#endif
+
 // =============================================================================
 // TYPE DEFINITIONS
 // =============================================================================
@@ -58,6 +88,18 @@ typedef struct RgTextGpuVertex
 	f32 u;
 	f32 v;
 } RgTextGpuVertex;
+
+#if RG_TEXT_GPU_USE_ASM
+#ifdef __cplusplus
+extern "C" {
+#endif
+extern void rg_text_gpu_pack_quads_asm(RgTextGpuVertex* vertices, u32* indices,
+                                      const RgTextQuad* quads, u32 quad_count,
+                                      u32 first_vertex);
+#ifdef __cplusplus
+}
+#endif
+#endif
 
 typedef struct RgTextGpuDesc
 {
@@ -179,7 +221,7 @@ RGINLINE size_t rg_text_gpu_queue_ex(RgTextGpuRenderer* renderer, const RgTextBu
 /**
  * @brief Queue prebuilt text quads.
  * @param renderer Renderer
- * @param quads Quads
+ * @param quads Quads; must not overlap the renderer or its output buffers
  * @param quad_count Quad count
  * @return Number of quads queued
  */
@@ -542,11 +584,13 @@ RGINLINE void rg_text_gpu_begin(RgTextGpuRenderer* renderer)
 	renderer->index_count = 0u;
 }
 
-RGINLINE size_t rg_text_gpu_queue_quads(RgTextGpuRenderer* renderer,
+// Cache the output arrays and counts, then publish counts once per batch.
+RGINLINE size_t rg_text_gpu__queue_quads_c(RgTextGpuRenderer* renderer,
                                         const RgTextQuad* quads,
                                         size_t quad_count)
 {
-	if (!renderer || !quads || quad_count == 0u)
+	if (!renderer || !quads || quad_count == 0u ||
+	    renderer->quad_count >= renderer->quad_capacity)
 	{
 		return 0u;
 	}
@@ -557,13 +601,18 @@ RGINLINE size_t rg_text_gpu_queue_quads(RgTextGpuRenderer* renderer,
 		quad_count = available;
 	}
 
+	u32 vertex_count = renderer->vertex_count;
+	u32 index_count = renderer->index_count;
+	RgTextGpuVertex* vertices = renderer->vertices;
+	u32* indices = renderer->indices;
 	for (size_t i = 0u; i < quad_count; i++)
 	{
-		const RgTextQuad* q = &quads[i];
-		u32 vertex_base = renderer->vertex_count;
-		u32 index_base = renderer->index_count;
-		RgTextGpuVertex* v = &renderer->vertices[vertex_base];
-		u32* idx = &renderer->indices[index_base];
+		const RgTextQuad value = quads[i];
+		const RgTextQuad* q = &value;
+		u32 vertex_base = vertex_count;
+		u32 index_base = index_count;
+		RgTextGpuVertex* v = &vertices[vertex_base];
+		u32* idx = &indices[index_base];
 
 		v[0].x = q->x0;
 		v[0].y = q->y0;
@@ -609,12 +658,121 @@ RGINLINE size_t rg_text_gpu_queue_quads(RgTextGpuRenderer* renderer,
 		idx[4] = vertex_base + 2u;
 		idx[5] = vertex_base + 3u;
 
-		renderer->quad_count++;
-		renderer->vertex_count += 4u;
-		renderer->index_count += 6u;
+		vertex_count += 4u;
+		index_count += 6u;
 	}
 
+	renderer->quad_count += (u32)quad_count;
+	renderer->vertex_count = vertex_count;
+	renderer->index_count = index_count;
 	return quad_count;
+}
+
+#if RG_TEXT_GPU_USE_SSE2 || RG_TEXT_GPU_USE_ASM
+// Fail at compile time if a structure edit invalidates the kernel's offsets.
+typedef char RgTextGpuPackLayoutCheck[
+	sizeof(f32) == 4 && sizeof(u32) == 4 && sizeof(int) == 4 && sizeof(RgTextQuad) == 48 &&
+	offsetof(RgTextQuad, x0) == 0 && offsetof(RgTextQuad, y0) == 4 &&
+	offsetof(RgTextQuad, x1) == 8 && offsetof(RgTextQuad, y1) == 12 &&
+	offsetof(RgTextQuad, u0) == 16 && offsetof(RgTextQuad, v0) == 20 &&
+	offsetof(RgTextQuad, u1) == 24 && offsetof(RgTextQuad, v1) == 28 &&
+	offsetof(RgTextQuad, color) == 32 && sizeof(RgTextColor) == 16 &&
+	offsetof(RgTextColor, r) == 0 && offsetof(RgTextColor, g) == 4 &&
+	offsetof(RgTextColor, b) == 8 && offsetof(RgTextColor, a) == 12 &&
+	sizeof(RgTextGpuVertex) == 36 && offsetof(RgTextGpuVertex, x) == 0 &&
+	offsetof(RgTextGpuVertex, y) == 4 && offsetof(RgTextGpuVertex, z) == 8 &&
+	offsetof(RgTextGpuVertex, r) == 12 && offsetof(RgTextGpuVertex, g) == 16 &&
+	offsetof(RgTextGpuVertex, b) == 20 && offsetof(RgTextGpuVertex, a) == 24 &&
+	offsetof(RgTextGpuVertex, u) == 28 && offsetof(RgTextGpuVertex, v) == 32 ? 1 : -1];
+#endif
+
+#if RG_TEXT_GPU_USE_SSE2
+RGINLINE void rg_text_gpu__pack_quads_sse2(RgTextGpuVertex* vertices, u32* indices,
+                                          const RgTextQuad* quads, u32 quad_count,
+                                          u32 first_vertex)
+{
+	int signed_base;
+	memcpy(&signed_base, &first_vertex, sizeof(signed_base));
+	__m128i base = _mm_set1_epi32(signed_base);
+	__m128i indices0120 = _mm_add_epi32(base, _mm_setr_epi32(0, 1, 2, 0));
+	__m128i indices2300 = _mm_add_epi32(base, _mm_setr_epi32(2, 3, 0, 0));
+	const __m128i step = _mm_set1_epi32(4);
+	for (u32 i = 0u; i < quad_count; i++)
+	{
+		// Fixed-size memcpy permits unaligned, alias-safe access across fields.
+		// Only moves and shuffles touch float values, preserving their bits.
+		unsigned char* output = (unsigned char*)vertices;
+		const unsigned char* input = (const unsigned char*)&quads[i];
+		__m128 p, uv, c, t;
+		memcpy(&p, input, 16);
+		memcpy(&uv, input + 16, 16);
+		memcpy(&c, input + 32, 16);
+		t = _mm_move_ss(c, uv);
+		t = _mm_shuffle_ps(t, t, 0x39);
+		memcpy(output + 16, &t, 16); // g b a u0
+		t = _mm_shuffle_ps(uv, p, 0x65);
+		t = _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(t), 4));
+		memcpy(output + 32, &t, 16); // v0 x1 y0 0
+		memcpy(output + 48, &c, 16); // r g b a
+		t = _mm_shuffle_ps(uv, p, 0xE6);
+		memcpy(output + 64, &t, 16); // u1 v0 x1 y1
+		t = _mm_castsi128_ps(_mm_slli_si128(_mm_castps_si128(c), 4));
+		memcpy(output + 80, &t, 16); // 0 r g b
+		t = _mm_shuffle_ps(c, uv, 0xEF);
+		t = _mm_move_ss(t, p);
+		t = _mm_shuffle_ps(t, t, 0x39);
+		memcpy(output + 96, &t, 16); // a u1 v1 x0
+		t = _mm_castsi128_ps(_mm_srli_si128(_mm_castps_si128(p), 12));
+		t = _mm_movelh_ps(t, c);
+		memcpy(output + 112, &t, 16); // y1 0 r g
+		t = _mm_shuffle_ps(c, uv, 0xCE);
+		memcpy(output + 128, &t, 16); // b a u0 v1
+		t = _mm_castsi128_ps(_mm_slli_si128(_mm_castps_si128(c), 4));
+		t = _mm_shuffle_ps(p, t, 0x44);
+		memcpy(output, &t, 16); // x0 y0 0 r
+		memcpy(indices, &indices0120, 16);
+		// This intrinsic permits unaligned stores. MSVC spills the live vector
+		// for an equivalent 8-byte memcpy; store its low half directly instead.
+		_mm_storel_epi64((__m128i*)(void*)(indices + 4), indices2300);
+		indices0120 = _mm_add_epi32(indices0120, step);
+		indices2300 = _mm_add_epi32(indices2300, step);
+		vertices += 4;
+		indices += 6;
+	}
+}
+#endif
+
+RGINLINE size_t rg_text_gpu_queue_quads(RgTextGpuRenderer* renderer,
+                                        const RgTextQuad* quads,
+                                        size_t quad_count)
+{
+#if !RG_TEXT_GPU_USE_ASM && !RG_TEXT_GPU_USE_SSE2
+	return rg_text_gpu__queue_quads_c(renderer, quads, quad_count);
+#else
+	if (!renderer || !quads || quad_count == 0u ||
+	    renderer->quad_count >= renderer->quad_capacity)
+	{
+		return 0u;
+	}
+
+	size_t available = (size_t)renderer->quad_capacity - (size_t)renderer->quad_count;
+	if (quad_count > available)
+	{
+		quad_count = available;
+	}
+
+	RgTextGpuVertex* vertices = renderer->vertices + renderer->vertex_count;
+	u32* indices = renderer->indices + renderer->index_count;
+#if RG_TEXT_GPU_USE_ASM
+	rg_text_gpu_pack_quads_asm(vertices, indices, quads, (u32)quad_count, renderer->vertex_count);
+#elif RG_TEXT_GPU_USE_SSE2
+	rg_text_gpu__pack_quads_sse2(vertices, indices, quads, (u32)quad_count, renderer->vertex_count);
+#endif
+	renderer->quad_count += (u32)quad_count;
+	renderer->vertex_count += (u32)quad_count * 4u;
+	renderer->index_count += (u32)quad_count * 6u;
+	return quad_count;
+#endif
 }
 
 RGINLINE size_t rg_text_gpu_queue(RgTextGpuRenderer* renderer,
