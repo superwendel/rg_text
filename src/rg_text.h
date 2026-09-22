@@ -864,8 +864,13 @@ RGINLINE int rg_text_font_load_rgfont(RgTextFont* font, const RgTextFontLoadDesc
 		}
 	}
 
+	// Keep the final counts explicitly bounded through validation and sorting,
+	// including when GCC inlines this loader into callers with small arrays.
+	const u32 glyph_count = font->glyph_count;
+	const u32 kerning_count = font->kerning_count;
 	if (!saw_version || font->metrics.atlas_width == 0u || font->metrics.atlas_height == 0u ||
-	    font->metrics.line_height <= 0 || font->glyph_count == 0u)
+	    font->metrics.line_height <= 0 || glyph_count == 0u ||
+	    glyph_count > desc->glyph_capacity || kerning_count > desc->kerning_capacity)
 	{
 		return 0;
 	}
@@ -875,7 +880,7 @@ RGINLINE int rg_text_font_load_rgfont(RgTextFont* font, const RgTextFontLoadDesc
 		return 0;
 	}
 
-	for (u32 i = 0u; i < font->glyph_count; i++)
+	for (u32 i = 0u; i < glyph_count; i++)
 	{
 		const RgTextGlyph* glyph = &font->glyphs[i];
 		if (!rg_text_codepoint_valid(glyph->codepoint) ||
@@ -887,7 +892,7 @@ RGINLINE int rg_text_font_load_rgfont(RgTextFont* font, const RgTextFontLoadDesc
 		}
 	}
 
-	for (u32 i = 0u; i < font->kerning_count; i++)
+	for (u32 i = 0u; i < kerning_count; i++)
 	{
 		if (!rg_text_codepoint_valid(font->kernings[i].left) ||
 		    !rg_text_codepoint_valid(font->kernings[i].right))
@@ -897,13 +902,13 @@ RGINLINE int rg_text_font_load_rgfont(RgTextFont* font, const RgTextFontLoadDesc
 	}
 
 	// Heapsort keeps load time O(n log n) without allocation or recursion.
-	rg_text_sort_glyphs(font->glyphs, font->glyph_count);
-	rg_text_sort_kernings(font->kernings, font->kerning_count);
-	for (u32 i = 1u; i < font->glyph_count; i++)
+	rg_text_sort_glyphs(font->glyphs, glyph_count);
+	rg_text_sort_kernings(font->kernings, kerning_count);
+	for (u32 i = 1u; i < glyph_count; i++)
 	{
 		if (font->glyphs[i - 1u].codepoint == font->glyphs[i].codepoint) return 0;
 	}
-	for (u32 i = 1u; i < font->kerning_count; i++)
+	for (u32 i = 1u; i < kerning_count; i++)
 	{
 		if (font->kernings[i - 1u].left == font->kernings[i].left &&
 		    font->kernings[i - 1u].right == font->kernings[i].right) return 0;

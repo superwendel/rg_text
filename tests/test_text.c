@@ -345,6 +345,78 @@ static void test_parse_failures(void)
 	TEST_PASS();
 }
 
+static void test_load_capacity_boundaries(void)
+{
+	static const char one_glyph[] =
+	    "rgfont 1\natlas 8 8\nline_height 8\nglyph 65 0 0 1 1 0 0 4\n";
+	static const char one_pair[] =
+	    "rgfont 1\natlas 8 8\nline_height 8\nglyph 65 0 0 1 1 0 0 4\n"
+	    "kerning 65 65 -2\n";
+	static const char two_glyphs[] =
+	    "rgfont 1\natlas 8 8\nline_height 8\nglyph 65 0 0 1 1 0 0 4\n"
+	    "glyph 66 1 0 1 1 0 0 5\n";
+	static const char two_pairs[] =
+	    "rgfont 1\natlas 8 8\nline_height 8\nglyph 65 0 0 1 1 0 0 4\n"
+	    "kerning 65 65 -2\nkerning 65 66 -1\n";
+	static const struct
+	{
+		const char* data;
+		int succeeds;
+		int kerning_storage;
+		int allow_kernings;
+		u32 success_pair_count;
+	} cases[] = {
+		{one_glyph, 1, 1, 1, 0u},
+		{one_glyph, 1, 0, 0, 0u},
+		{one_pair, 1, 1, 1, 1u},
+		{two_glyphs, 0, 1, 1, 0u},
+		{two_pairs, 0, 1, 1, 0u},
+		{one_pair, 0, 1, 0, 0u},
+		{one_pair, 0, 0, 0, 0u},
+	};
+
+	for (u32 i = 0u; i < RG_ARRAY_COUNT(cases); i++)
+	{
+		struct { u32 before; RgTextGlyph values[1]; u32 after; } glyphs;
+		struct { u32 before; RgTextKerning values[1]; u32 after; } kernings;
+		memset(&glyphs, 0xA5, sizeof(glyphs));
+		memset(&kernings, 0x5A, sizeof(kernings));
+		glyphs.before = 0x12345678u;
+		glyphs.after = 0x87654321u;
+		kernings.before = 0x13579BDFu;
+		kernings.after = 0xFDB97531u;
+
+		RgTextFont font = {0};
+		RgTextFontLoadDesc load = {0};
+		load.data = cases[i].data;
+		load.data_size = strlen(cases[i].data);
+		load.glyphs = glyphs.values;
+		load.glyph_capacity = RG_ARRAY_COUNT(glyphs.values);
+		load.kernings = cases[i].kerning_storage ? kernings.values : NULL;
+		load.kerning_capacity = cases[i].allow_kernings ? RG_ARRAY_COUNT(kernings.values) : 0u;
+		int loaded = rg_text_font_load_rgfont(&font, &load);
+		TEST_ASSERT(loaded == cases[i].succeeds, "zero/one-capacity load result");
+		TEST_ASSERT(glyphs.before == 0x12345678u && glyphs.after == 0x87654321u &&
+		            kernings.before == 0x13579BDFu && kernings.after == 0xFDB97531u,
+		            "one-element storage guards remain intact");
+		TEST_ASSERT(font.glyph_count <= load.glyph_capacity && font.kerning_count <= load.kerning_capacity,
+		            "loaded counts stay within provided capacity, including failures");
+		if (loaded)
+		{
+			TEST_ASSERT(font.glyph_count == 1u && font.kerning_count == cases[i].success_pair_count,
+			            "successful one-element table counts");
+			const RgTextGlyph* glyph = rg_text_find_glyph(&font, 'A');
+			TEST_ASSERT(glyph && glyph->codepoint == 'A' && glyph->x_advance == 4,
+			            "lookup in successfully loaded one-element glyph table");
+			TEST_ASSERT(rg_text_find_glyph(&font, 'B') == NULL, "missing lookup in one-element glyph table");
+			TEST_ASSERT(rg_text_find_kerning(&font, 'A', 'A') == (cases[i].success_pair_count ? -2 : 0),
+			            "lookup in empty or one-element kerning table");
+			TEST_ASSERT(rg_text_find_kerning(&font, 'A', 'B') == 0, "missing lookup in one-element kerning table");
+		}
+	}
+	TEST_PASS();
+}
+
 static void test_unordered_lookup(void)
 {
 	static const char data[] =
@@ -556,6 +628,7 @@ int main(int argc, char** argv)
 	test_alignment();
 	test_numeric_boundaries();
 	test_parse_failures();
+	test_load_capacity_boundaries();
 	test_unordered_lookup();
 	test_duplicate_records();
 	test_large_unordered_font();
