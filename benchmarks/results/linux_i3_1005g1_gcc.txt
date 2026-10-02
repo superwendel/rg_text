@@ -1,0 +1,462 @@
+rg_text Linux x86-64 baseline measurements: gcc, 2026-10-02
+These measurements use the pre-change runtime and the updated benchmark harness.
+The final runtime source is byte-for-byte identical to that baseline.
+Seven warmed samples per run; median/min/max reported below.
+Baseline runs were interleaved with candidates; earlier cross-process candidate results are excluded.
+Machine variation is substantial. These are host baselines, not a compiler ranking.
+Paths are normalized; <baseline> uses the runtime revision below and the
+current benchmark harness, <rg_core> is the dependency checkout, and
+<baked.font> is the baked Inter fixture identified by its SHA256.
+See docs/linux_validation.md for interpretation and reproduction.
+
+===== reproducibility metadata =====
+{
+  "measurement_started_utc": "2026-10-02T13:46:12.493279+00:00",
+  "runtime_revision": "5331db7dee83338dacbf8f2e7b90d69acb60bac1",
+  "compiler": "gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0",
+  "flags": "-std=c99 -pedantic-errors -O2 -Wall -Wextra -Werror; no LTO, fast-math or native ISA target",
+  "host": "Linux Mint 22.1; Linux 6.8.0-60-generic; Intel Core i3-1005G1; x86-64; 2 cores / 4 threads",
+  "cache": "48 KiB L1d and 32 KiB L1i per core; 512 KiB L2 per core; 4 MiB shared L3",
+  "affinity_cpu": 0,
+  "power": "intel_pstate; powersave; balance_performance EPP; turbo enabled; 400-3400 MHz; unchanged",
+  "sdl_version": "3.2.18",
+  "rg_core_revision": "d5d3f4413da22568572a37f5c6bf4e0506c68a2a",
+  "rg_core_dirty": true,
+  "rg_core_header_sha256": {
+    "src/rg_algo.h": "810c82276bca3109ac48d208d982742bb4ad72f57c1b51051953421b9553a41d",
+    "src/rg_assert.h": "4fc521c4541fafd0fa294fd8a8038c01f01b7bb83fda6cc724546d54045e9921",
+    "src/rg_bin.h": "84e537ebd174dcd83908a0b1e95a736bf38e2fa1ed146073b3d72ac88b3b62a2",
+    "src/rg_containers.h": "d128db790fb65a66ca4eb44e635222e322bae7a2dd8d9b175b2ebd1f07a592d3",
+    "src/rg_defs.h": "179b6e6e69699cc2027226088c6961ad625c6dbcb6d602b92bf3313d7636a0e6",
+    "src/rg_gpu.h": "58b53d4401308a145d94678b5d2467309ea66e73934092e0f5cce57cbcf27b64",
+    "src/rg_hash.h": "8087deea280d1e886d5603b591fefa9b98c0dfa8c7c024bac72eefafad93a551",
+    "src/rg_input.h": "0eaf5d290cb3996eefcdd1badd2c31d381735700e13ac7ab21ece1cd9c6d6b1a",
+    "src/rg_log.h": "0c88566a5f7c1924dbeb64f1e98648c49c077048b06cf0a42f20729b990ef451",
+    "src/rg_math.h": "5910b22f0388209b78f44940377bd56b5dbb21a2e475060537ba3e7ba42f6267",
+    "src/rg_math_cam.h": "9591fde0a865a287c74ff146f229792797a73a5685dcfcc353922ccee12033cf",
+    "src/rg_math_color.h": "52b09f46353972c24e75bfce7c5a5e1ac0ede86fdc2023056cb409c9bcd14744",
+    "src/rg_math_core.h": "deba6b699f97d0519414bcb3c3d1ea7326688462b5dba62e8aa1c5dc35c7762a",
+    "src/rg_math_curve.h": "14bab6994da63d32e43a3be596a1d89e72acc243d702dbea708b69a60f80ad2b",
+    "src/rg_math_euler.h": "724d3f1dbd51d9a08d3c6df1c9eefb49d10ea27e454bf216c2b12146f565398d",
+    "src/rg_math_geom.h": "17a61f0b5264557c8f094a9f139dbae850f355248ea15eb54836889cc1b96d34",
+    "src/rg_math_io.h": "45bff7468da46fe818b1ba577727d851d54135e2c11056d7b4fa19180393461b",
+    "src/rg_math_mat.h": "472db180c3a4d15e5079e23476657489c52b5adcb24ada9cbe6a6b5f361d9195",
+    "src/rg_math_noise.h": "f8ca8b9ea3176c4c910a3617fb4e8f032ae760eeb3d122d907889a148fabfc51",
+    "src/rg_math_quat.h": "126748e1a64ecf65ccbc0bd7894c6d2bf06b308a3e0cbca9fb2526e8cb8fb229",
+    "src/rg_math_scalar.h": "1c8fbc992bffd47fd2e24ad9fa87383805d5fd5e97972a54581ea60dbc2b58d8",
+    "src/rg_math_vec.h": "5635e17ec30f459362608f8ba3cbbeda049994a3855bcfc4ff43502ea92b77e2",
+    "src/rg_mem.h": "6b7e80fd842f1e079087c43e9d0ae4119f525a2badcb0790b24192e5d2eaf868",
+    "src/rg_prof.h": "5a97c472c5b0f6e4d5d6c9e4411eabcf7b5698c1a673c07c23bd8182d2114c20",
+    "src/rg_random.h": "69f20d9d4682fb2175c6ddf4adde222c0cd96b231f53a0c5ba39fd20c21745be",
+    "src/rg_sdl.h": "80c7f95b9ba1bc9b7ca76eb231cf9b24d7f17d461af7ee0c544b52d77ecbf864",
+    "src/rg_sprintf.h": "86fb06fd8db7fbf5b52274c413b234319e678a8598625463ad16fc9ac417c5fa",
+    "src/rg_sprintf_asm.h": "cff863bb2617d5afcc16c86a0cafbff302371814453779be3362af3e249fadc0",
+    "src/rg_sprintf_hybrid.h": "d0edf5fe03155a478a8264104ae8d0a4edf680db42721a123b9d3db60cba80b4",
+    "src/rg_string.h": "a792e445297ecbbb0f7b895061e2bf3b7317e4ba39fd126d7a72875ce35eec7d",
+    "src/rg_time.h": "034e4f4833f29472bbd34aa4942ae2f2e4e2c7dfdaacaee5ad3cbe00b444c91f",
+    "src/rg_window.h": "4787069c37661723d0086b34678edf0416ce0aa32e34f5b935143607ceb677f7"
+  },
+  "runtime_sha256": {
+    "asm/rg_text_gpu_pack_quads_x64.asm": "db8fb2c7aa549990163fe75cd8510ae41ba9b25d487c3ff60e54de6624322872",
+    "rg_text.h": "6ccbb0f565ee9aecf3372e9cc376c3cee04e27f21c018221fd38cab412fcd95c",
+    "rg_text_gpu.h": "168a175243e132815d8c280cc8a485a6f18157b1ec07c2524dfffc52bc937064"
+  },
+  "harness_sha256": {
+    "bench_gpu_pack.c": "76503afeff3ce12bf2c0e50a7be6c705a7e224a354d90f7c9d7a9b5c2d280760",
+    "bench_text.c": "1cd42eecdf3b342808b7661814b7849e942ef90bcbf2f8e5c6c0f492f2ee1def",
+    "quad_pack_reference.h": "1dc6492509a0b501cca14065325a2ecafc73dede4f2062a234685a7ee72f31d5"
+  },
+  "baked_font_sha256": "e31e494cee22d7a7b03355d70862e6631993a55dc75f23b3e0aa896bb1369e83",
+  "baked_font": "Inter Medium 4.1, 16 px, ASCII 32-126, with kerning",
+  "runs": 3,
+  "samples_per_run": 7
+}
+
+===== gcc-layout-baseline-compile.log =====
+$ gcc -std=c99 -pedantic-errors -O2 -Wall -Wextra -Werror -I <rg_core>/src <baseline>/benchmarks/bench_text.c -lm -o <baseline>/gcc-layout
+
+===== gcc-layout-baseline-verify.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-layout --verify-only <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== gcc-layout-baseline-run-1.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-layout <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=2373.915 ns/call min=1069.542 max=3994.821 (16384 calls/trial)
+  capacity=1 median=37.553 ns/call min=28.297 max=94.718 (524288 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=100504.027 ns/call min=78575.383 max=166628.391 (256 calls/trial)
+  capacity=1 median=32.507 ns/call min=31.194 max=65.879 (1048576 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=223909.359 ns/call min=218689.578 max=387891.539 (128 calls/trial)
+  capacity=1 median=72594.160 ns/call min=70838.113 max=150332.998 (512 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=209351.391 ns/call min=202776.922 max=282126.047 (64 calls/trial)
+  capacity=1 median=76809.133 ns/call min=57155.332 max=81280.207 (256 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=60487.615 ns/call min=45743.326 max=114512.234 (512 calls/trial)
+  capacity=1 median=33.831 ns/call min=31.846 max=53.039 (524288 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=134849.652 ns/call min=129851.891 max=152193.895 (256 calls/trial)
+  capacity=1 median=31.668 ns/call min=30.380 max=33.697 (1048576 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=62111.902 ns/call min=58776.701 max=104843.441 (512 calls/trial)
+  capacity=1 median=21.275 ns/call min=20.330 max=56.042 (524288 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=106323.311 ns/call min=66387.320 max=177772.170 (512 calls/trial)
+  capacity=1 median=50.321 ns/call min=32.936 max=93.979 (262144 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=859.371 ns/call min=690.658 max=1798.869 (16384 calls/trial)
+  capacity=1 median=46.211 ns/call min=21.944 max=53.834 (524288 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=130201.619 ns/call min=90522.893 max=141521.514 (512 calls/trial)
+  capacity=1 median=42.510 ns/call min=31.360 max=66.553 (524288 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== gcc-layout-baseline-run-2.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-layout <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=971.754 ns/call min=744.035 max=1159.513 (32768 calls/trial)
+  capacity=1 median=32.264 ns/call min=30.999 max=41.354 (524288 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=117482.613 ns/call min=97965.379 max=135365.789 (256 calls/trial)
+  capacity=1 median=40.561 ns/call min=30.700 max=71.638 (524288 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=273243.703 ns/call min=250535.891 max=307546.195 (128 calls/trial)
+  capacity=1 median=100684.941 ns/call min=91337.125 max=177694.406 (256 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=296464.234 ns/call min=233221.516 max=337461.531 (64 calls/trial)
+  capacity=1 median=101664.668 ns/call min=82820.641 max=126555.047 (256 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=46053.500 ns/call min=44268.486 max=80449.035 (512 calls/trial)
+  capacity=1 median=28.623 ns/call min=24.384 max=30.127 (1048576 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=154128.730 ns/call min=142823.449 max=282640.996 (256 calls/trial)
+  capacity=1 median=40.037 ns/call min=35.818 max=60.927 (1048576 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=70480.404 ns/call min=67575.697 max=82102.465 (512 calls/trial)
+  capacity=1 median=20.738 ns/call min=16.382 max=22.496 (1048576 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=71237.695 ns/call min=64124.656 max=103854.889 (512 calls/trial)
+  capacity=1 median=43.115 ns/call min=37.326 max=137.573 (524288 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=704.278 ns/call min=581.016 max=857.010 (32768 calls/trial)
+  capacity=1 median=37.754 ns/call min=30.523 max=63.177 (1048576 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=84552.844 ns/call min=73838.469 max=230606.656 (64 calls/trial)
+  capacity=1 median=28.438 ns/call min=28.043 max=29.179 (1048576 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== gcc-layout-baseline-run-3.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-layout <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=766.596 ns/call min=688.821 max=1347.922 (32768 calls/trial)
+  capacity=1 median=30.563 ns/call min=27.618 max=32.272 (1048576 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=154231.922 ns/call min=98839.125 max=248293.156 (256 calls/trial)
+  capacity=1 median=33.539 ns/call min=28.264 max=45.392 (1048576 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=270862.875 ns/call min=237569.844 max=280514.953 (64 calls/trial)
+  capacity=1 median=176478.699 ns/call min=86258.496 max=266061.801 (256 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=253563.562 ns/call min=245522.070 max=350025.133 (128 calls/trial)
+  capacity=1 median=83302.562 ns/call min=79345.680 max=156599.980 (512 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=46508.449 ns/call min=41755.527 max=63192.723 (256 calls/trial)
+  capacity=1 median=30.846 ns/call min=28.374 max=42.126 (1048576 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=187145.508 ns/call min=134464.734 max=252602.477 (128 calls/trial)
+  capacity=1 median=39.640 ns/call min=33.823 max=50.663 (524288 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=79876.764 ns/call min=54781.855 max=97098.373 (512 calls/trial)
+  capacity=1 median=25.472 ns/call min=22.057 max=30.171 (1048576 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=92499.350 ns/call min=77122.934 max=177291.977 (512 calls/trial)
+  capacity=1 median=38.848 ns/call min=37.343 max=56.588 (1048576 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=667.532 ns/call min=620.080 max=1036.838 (32768 calls/trial)
+  capacity=1 median=47.065 ns/call min=31.379 max=74.957 (1048576 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=113503.996 ns/call min=84671.531 max=350404.461 (256 calls/trial)
+  capacity=1 median=32.288 ns/call min=30.520 max=38.942 (1048576 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== gcc-packing-baseline-compile.log =====
+$ gcc -std=c99 -pedantic-errors -O2 -Wall -Wextra -Werror -I <rg_core>/src -isystem /usr/local/include <baseline>/benchmarks/bench_gpu_pack.c -L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,--enable-new-dtags -lSDL3 -lm -o <baseline>/gcc-packing
+
+===== gcc-packing-baseline-verify.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-packing --verify-only
+
+Compiler: GCC 13.3.0
+Platform: Linux; logical CPUs: 4; SSE2: yes; ASM comparison: disabled
+CPU packing only; seven alternating trials; benchmark does not set affinity; compile optimized without LTO.
+
+Bitwise, boundary, and counter checks passed. Checksum: 0
+
+===== gcc-packing-baseline-run-1.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-packing
+
+Compiler: GCC 13.3.0
+Platform: Linux; logical CPUs: 4; SSE2: yes; ASM comparison: disabled
+CPU packing only; seven alternating trials; benchmark does not set affinity; compile optimized without LTO.
+
+quads=1 buffers=1 working_set=0.000 MiB iterations=2000000
+  original     median=    21.557 ns min=    21.350 max=    21.724 original/median=1.000x
+  portable C   median=    22.838 ns min=    22.483 max=    23.095 original/median=0.944x
+  SSE2         median=    14.938 ns min=    14.761 max=    15.132 original/median=1.443x
+
+quads=16 buffers=1 working_set=0.003 MiB iterations=750000
+  original     median=   212.293 ns min=   209.309 max=   259.310 original/median=1.000x
+  portable C   median=   207.089 ns min=   197.979 max=   249.203 original/median=1.025x
+  SSE2         median=    99.049 ns min=    97.620 max=   100.912 original/median=2.143x
+
+quads=1656 buffers=1 working_set=0.341 MiB iterations=7246
+  original     median= 40525.780 ns min= 34983.105 max= 57396.838 original/median=1.000x
+  portable C   median= 47385.945 ns min= 39688.010 max= 53183.937 original/median=0.855x
+  SSE2         median= 22712.282 ns min= 18665.395 max= 27562.477 original/median=1.784x
+
+quads=8192 buffers=1 working_set=1.688 MiB iterations=1464
+  original     median=167946.758 ns min=136366.456 max=209815.404 original/median=1.000x
+  portable C   median=205968.997 ns min=145560.895 max=280915.048 original/median=0.815x
+  SSE2         median=117465.996 ns min= 81989.742 max=199101.285 original/median=1.430x
+
+quads=8192 buffers=64 working_set=108.000 MiB iterations=1464
+  original     median=286638.029 ns min=232705.640 max=351533.961 original/median=1.000x
+  portable C   median=261022.195 ns min=232716.325 max=388532.218 original/median=1.098x
+  SSE2         median=243709.953 ns min=209041.448 max=317341.658 original/median=1.176x
+
+Bitwise, boundary, and counter checks passed. Checksum: 14985974338892662926
+
+===== gcc-packing-baseline-run-2.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-packing
+
+Compiler: GCC 13.3.0
+Platform: Linux; logical CPUs: 4; SSE2: yes; ASM comparison: disabled
+CPU packing only; seven alternating trials; benchmark does not set affinity; compile optimized without LTO.
+
+quads=1 buffers=1 working_set=0.000 MiB iterations=2000000
+  original     median=    17.064 ns min=    13.824 max=    44.886 original/median=1.000x
+  portable C   median=    16.669 ns min=    13.621 max=    48.734 original/median=1.024x
+  SSE2         median=    11.677 ns min=    10.888 max=    13.391 original/median=1.461x
+
+quads=16 buffers=1 working_set=0.003 MiB iterations=750000
+  original     median=   143.326 ns min=   131.977 max=   195.094 original/median=1.000x
+  portable C   median=   137.888 ns min=   130.856 max=   149.078 original/median=1.039x
+  SSE2         median=    65.711 ns min=    60.143 max=    67.397 original/median=2.181x
+
+quads=1656 buffers=1 working_set=0.341 MiB iterations=7246
+  original     median= 23692.046 ns min= 22140.306 max= 33086.127 original/median=1.000x
+  portable C   median= 25735.751 ns min= 22424.017 max= 67537.688 original/median=0.921x
+  SSE2         median= 16462.404 ns min= 14919.166 max= 17486.787 original/median=1.439x
+
+quads=8192 buffers=1 working_set=1.688 MiB iterations=1464
+  original     median=147266.886 ns min=136745.536 max=175508.720 original/median=1.000x
+  portable C   median=145502.609 ns min=125968.822 max=181871.227 original/median=1.012x
+  SSE2         median= 87345.169 ns min= 81700.854 max=105062.242 original/median=1.686x
+
+quads=8192 buffers=64 working_set=108.000 MiB iterations=1464
+  original     median=198939.675 ns min=192271.576 max=222630.347 original/median=1.000x
+  portable C   median=193570.962 ns min=188983.333 max=205635.620 original/median=1.028x
+  SSE2         median=188911.088 ns min=183213.875 max=206824.813 original/median=1.053x
+
+Bitwise, boundary, and counter checks passed. Checksum: 14985974338892662926
+
+===== gcc-packing-baseline-run-3.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-packing
+
+Compiler: GCC 13.3.0
+Platform: Linux; logical CPUs: 4; SSE2: yes; ASM comparison: disabled
+CPU packing only; seven alternating trials; benchmark does not set affinity; compile optimized without LTO.
+
+quads=1 buffers=1 working_set=0.000 MiB iterations=2000000
+  original     median=    15.397 ns min=    13.364 max=    15.965 original/median=1.000x
+  portable C   median=    13.435 ns min=    12.882 max=    16.273 original/median=1.146x
+  SSE2         median=    10.149 ns min=     9.352 max=    12.466 original/median=1.517x
+
+quads=16 buffers=1 working_set=0.003 MiB iterations=750000
+  original     median=   135.383 ns min=   128.549 max=   155.902 original/median=1.000x
+  portable C   median=   132.778 ns min=   129.917 max=   137.677 original/median=1.020x
+  SSE2         median=    64.195 ns min=    58.811 max=    68.014 original/median=2.109x
+
+quads=1656 buffers=1 working_set=0.341 MiB iterations=7246
+  original     median= 22647.349 ns min= 21033.700 max= 23914.933 original/median=1.000x
+  portable C   median= 23319.597 ns min= 21907.290 max= 24997.799 original/median=0.971x
+  SSE2         median= 15351.869 ns min= 14928.406 max= 15839.513 original/median=1.475x
+
+quads=8192 buffers=1 working_set=1.688 MiB iterations=1464
+  original     median=127704.340 ns min=117585.358 max=175092.120 original/median=1.000x
+  portable C   median=128866.240 ns min=125003.205 max=185661.004 original/median=0.991x
+  SSE2         median= 84304.640 ns min= 82648.520 max= 86847.097 original/median=1.515x
+
+quads=8192 buffers=64 working_set=108.000 MiB iterations=1464
+  original     median=174058.657 ns min=160426.541 max=184001.408 original/median=1.000x
+  portable C   median=175852.492 ns min=153639.016 max=203804.298 original/median=0.990x
+  SSE2         median=158941.677 ns min=143732.122 max=172399.296 original/median=1.095x
+
+Bitwise, boundary, and counter checks passed. Checksum: 14985974338892662926
+
+===== rejected SSE2 candidate: same-process audit =====
+GCC 13.3.0, same host/dependency as above, pinned to CPU 0.
+Baseline and candidate adapters use identical wrapper source in separate
+translation units; noinline calls and no LTO. Unchanged C implementations
+are controls. All methods share buffers; trial order alternates and the
+second repetition reverses the initial order. Exact bytes/counters passed
+before timing and checksums passed after each timed trial in all 12 runs.
+Flags: strict C99, -Wall -Wextra -Werror -fno-lto, plus the variant below.
+o2=-O2; o3=-O3; native additionally enables -march=native.
+The candidate removes GCC byte-shift spills using float unpack/shuffles.
+Native baseline code already avoids those spills. Results vary by flags
+and workload; unchanged controls also move substantially. The candidate
+was REJECTED. No runtime modification is part of the final change.
+SHA256 baseline/src/rg_text_gpu.h: 168a175243e132815d8c280cc8a485a6f18157b1ec07c2524dfffc52bc937064
+SHA256 current/src/rg_text_gpu.h: ac12c0199e5c4eb227601a995e13ef9893830b3d83943d5be552eaa3b865e8c5
+SHA256 baseline/benchmarks/adapter.c: 8d4d10f7f18e11ef6a931ef0e0c05b494cac70d109eae00ce1c4950f68dee394
+SHA256 bench_gpu_pack_compare.c: 762caf686df4230b71b6fb8a07c7eedc24592914b6121fad9de8d728dca50f11
+
+Median paired ratios across 21 trials; candidate / baseline; >1 is slower.
+variant,quads,buffers,C_control_ratio,SSE2_candidate_ratio
+o2,1,1,1.009809617,0.953057420
+o2,16,1,1.028576235,0.781794730
+o2,1656,1,1.037469134,0.812965496
+o2,8192,1,0.995070759,0.857964228
+o2,8192,64,0.983698491,0.990522850
+o3,1,1,0.994748130,0.982634437
+o3,16,1,0.961007836,0.861601126
+o3,1656,1,0.952734148,0.860924553
+o3,8192,1,1.025342707,0.883968364
+o3,8192,64,0.971885834,1.059588752
+o2-native,1,1,0.977911299,1.004698019
+o2-native,16,1,0.925299340,1.015102024
+o2-native,1656,1,1.086052076,1.047743834
+o2-native,8192,1,0.999435843,0.964443346
+o2-native,8192,64,0.951554812,0.958668073
+o3-native,1,1,0.988603748,1.014708789
+o3-native,16,1,0.995088439,0.996865081
+o3-native,1656,1,0.948944851,1.052695046
+o3-native,8192,1,0.990342208,0.997000998
+o3-native,8192,64,1.019884332,0.939037637
+
+Per-trial ratios in measurement order, seven per row (not independently sorted).
+variant,run,quads,buffers,C_control_ratios[7],SSE2_candidate_ratios[7]
+o2,1,1,1,[1.216648614 0.875399094 1.057070925 1.008077517 1.039070272 0.830678386 0.870865249],[1.135988412 0.747264715 0.971769248 0.850356890 0.989403766 0.986843046 1.169750801]
+o2,1,16,1,[1.016588892 1.030492158 0.917341468 1.037165445 1.051010946 1.115534294 0.963765450],[0.816300878 0.725727662 0.776599560 0.926941946 0.844894804 0.758472017 0.745356569]
+o2,1,1656,1,[1.013873957 1.068931530 1.072993456 0.911643344 0.956592373 0.915404002 0.936920671],[0.803919265 0.791581016 0.775393792 0.840972582 0.864835519 0.812965496 0.820456037]
+o2,1,8192,1,[0.995070759 1.094761673 0.768613076 1.004067365 1.053303648 0.923499603 0.936023122],[0.807960043 0.857964228 0.875439826 0.840904575 0.820839913 0.815134223 0.859033719]
+o2,1,8192,64,[1.015900626 0.987841057 0.664229113 1.241941829 0.813308927 0.777114216 0.822158155],[0.990522850 1.016794072 1.049333962 1.142993941 1.558768369 0.837114764 0.922976206]
+o2,2,1,1,[1.157518299 1.009809617 0.979170214 1.160728318 0.974750111 1.374416072 1.180035599],[0.830872505 0.966317067 0.824682283 1.034923112 0.837617773 0.702315187 1.076267640]
+o2,2,16,1,[0.750122497 1.727948238 0.975050735 1.457822422 0.689719706 1.765735271 0.952961484],[0.916211434 0.701783704 0.681598991 0.698176293 0.752302587 1.035605120 0.941122678]
+o2,2,1656,1,[1.076225168 1.224794190 1.037469134 0.975804620 0.971443603 0.965669424 1.091299054],[0.790738940 0.775166029 0.831593104 0.795637512 0.775660507 0.857148818 0.795520333]
+o2,2,8192,1,[1.069090586 0.923679294 1.009120106 0.807497255 0.843542988 0.904949006 0.907139568],[0.858822078 1.027101755 1.176736552 0.808986651 1.024499855 0.769456289 0.978743238]
+o2,2,8192,64,[0.983114047 0.554145654 1.099863400 0.983698491 1.025318209 1.086030026 1.584439255],[1.086831390 0.958977366 1.004076237 1.109744123 0.981187308 0.739245179 0.975325389]
+o2,3,1,1,[0.964210746 1.079131155 0.966009208 0.897018996 0.911423215 1.020043000 1.015563673],[0.953057420 0.802563315 0.880041860 0.855183062 0.944502101 1.002959378 1.113169992]
+o2,3,16,1,[1.016299676 1.058614708 1.057139974 1.028576235 0.956746900 1.260041739 1.015606323],[0.723359906 0.839960255 0.883898868 0.781794730 0.788517778 0.772907230 0.791920997]
+o2,3,1656,1,[1.080132473 0.949377498 1.085231784 1.263951350 1.190100463 0.989784208 1.077960606],[0.838812091 0.727337495 1.129002537 0.929355456 0.639484233 0.873423457 0.852047762]
+o2,3,8192,1,[1.064678180 0.877631438 0.924388956 1.156910157 1.159367331 1.200369587 0.997233683],[0.806536871 0.664652613 0.873053286 0.714312910 0.544024398 1.410170256 1.123830061]
+o2,3,8192,64,[0.771435735 0.870789892 1.210435938 0.827239746 0.625684252 1.158497799 0.999021536],[1.029470969 0.899794096 0.732555500 1.009927775 0.941176209 1.038054316 0.884469884]
+o3,1,1,1,[0.797527497 0.740378594 0.763037766 1.077445798 1.042005612 1.091867539 0.816978415],[0.867360436 1.143146769 0.769405515 1.004929040 0.757769426 0.850401114 0.610251714]
+o3,1,16,1,[0.930266614 0.888363498 0.915895293 1.003744084 1.130718843 0.959321288 0.952371908],[0.858019441 0.798005758 0.861601126 0.922676125 0.753321885 0.884280277 0.955320400]
+o3,1,1656,1,[0.734276865 0.903658194 1.072467518 1.013518466 1.015130048 0.926121728 0.921118319],[0.869774678 0.853298896 1.013856231 0.920584559 0.779467897 0.801428637 0.856906010]
+o3,1,8192,1,[1.067077293 1.568692379 0.827558025 1.431882815 0.854307905 1.080982274 1.064160649],[0.973745029 0.686655974 0.883968364 0.858909920 0.844599258 0.850454844 0.838523212]
+o3,1,8192,64,[1.313637263 1.213314081 0.971885834 0.758462641 0.953206798 0.874237347 0.936218540],[0.915495926 0.933728229 0.869998423 1.181661516 1.101469280 0.975059290 1.088952220]
+o3,2,1,1,[1.020106797 0.994748130 0.839220998 1.287207255 0.849007376 1.053147132 1.167108429],[0.982634437 1.315000988 1.632136352 0.696785042 0.859444456 1.017263306 0.994695160]
+o3,2,16,1,[1.030376636 1.180876643 1.038058923 0.919431742 0.698401219 1.096728435 0.535434960],[0.907006946 1.011926297 0.786781896 0.764206569 0.771459403 0.560336024 0.876842194]
+o3,2,1656,1,[0.952734148 1.003119281 0.862613728 1.169042150 1.297799932 0.583376488 0.902026010],[1.196232565 0.943874663 0.840720485 0.763703665 1.007854221 0.791454842 1.087541828]
+o3,2,8192,1,[1.130789094 2.063514057 1.025342707 0.905040076 0.935102708 1.009976621 0.390142985],[1.187976144 0.586321691 0.982405508 0.887125985 1.059985198 0.881856665 1.689256915]
+o3,2,8192,64,[0.339051882 0.757456639 1.667570164 1.307402459 2.234818937 0.931225676 1.708882975],[2.438101223 2.083941634 0.642367068 1.442485419 1.327951852 0.555575717 1.042918527]
+o3,3,1,1,[0.991169729 0.998351779 0.966422960 1.183667142 1.067159307 0.840246221 0.939321281],[1.193182369 1.015346199 1.075179577 0.457741294 0.940960726 1.088306596 0.438899008]
+o3,3,16,1,[0.565380540 0.806104664 1.031389353 0.961007836 1.495676135 2.287543523 1.386537713],[0.822513042 0.911266392 0.516018383 1.088453582 0.584958263 0.947684406 0.942169503]
+o3,3,1656,1,[0.646848447 1.156127429 0.961296678 0.747893149 1.299627853 1.847704204 0.942666082],[0.940670279 0.774077395 0.860924553 0.582366877 0.451103442 1.374731364 0.907010377]
+o3,3,8192,1,[1.636812285 1.155677684 0.358571131 1.407013371 0.731700165 0.771547840 0.476678244],[0.655771334 0.509484008 2.231077231 1.038359700 1.088500948 0.369644853 1.008198300]
+o3,3,8192,64,[0.544182976 0.741961287 1.086961058 0.360909671 1.630558387 1.117769918 1.054070521],[0.510876192 0.746524696 1.059588752 1.002165178 1.778029411 1.160174960 1.142315453]
+o2-native,1,1,1,[1.399649532 0.758256088 0.508858201 1.033326971 0.978849130 0.995105251 1.005570227],[0.876232223 1.290762530 0.988714325 1.004698019 1.001334704 1.051790756 0.979066621]
+o2-native,1,16,1,[1.002574279 0.425075476 1.096193760 1.661334212 0.827953515 1.286701416 1.315666120],[1.062377342 0.987319247 1.017033635 1.313843965 1.069116994 0.907189129 0.645652857]
+o2-native,1,1656,1,[0.949987989 1.438555855 0.692170478 0.953892742 0.670469483 0.832147708 0.780454501],[1.595299770 0.406783581 0.794422586 0.965356580 1.254104157 1.226055743 1.208077370]
+o2-native,1,8192,1,[0.936929502 1.214235874 0.752393977 1.646587270 1.192985905 0.833286924 0.746547398],[0.964443346 0.687529357 0.769488098 1.369092856 0.965372083 1.877591655 0.299007066]
+o2-native,1,8192,64,[0.878745508 0.747970915 0.703621512 1.254061790 1.251559288 0.855892913 0.868403107],[0.958668073 1.206175042 1.096511196 1.089257285 1.104689231 1.102204524 0.791118848]
+o2-native,2,1,1,[0.977009654 0.977911299 0.792878975 0.975504214 0.746096611 0.656593478 0.804074057],[1.164653005 0.879339938 0.990857722 0.773803807 1.253750452 1.270059216 1.108884286]
+o2-native,2,16,1,[1.150431805 0.925299340 1.056278061 1.040906772 0.830696775 0.957474644 0.987975001],[0.641514251 0.957780438 0.942437120 0.958584787 1.167207905 1.015102024 1.008414195]
+o2-native,2,1656,1,[1.176241450 1.627273018 1.607689902 1.406757557 0.948686844 1.239617369 1.061256816],[0.786191359 1.178065139 0.868805456 0.949098909 1.056847306 1.409653080 1.692161970]
+o2-native,2,8192,1,[1.178982440 0.803221807 1.193601793 0.901800867 1.051465408 1.110036522 0.999435843],[1.251267672 1.213998330 0.732845715 0.963591731 0.853324853 0.568679969 0.920545151]
+o2-native,2,8192,64,[0.977391674 0.942528131 1.233613428 0.871056428 0.866256307 1.626708154 0.951554812],[0.932319222 1.210223968 1.225746940 0.973339791 0.872801534 0.847527390 1.179112718]
+o2-native,3,1,1,[0.493271211 1.030904169 1.487510655 1.073973940 1.351557273 0.522060335 1.356108762],[2.253445840 1.366698503 0.851536023 0.846024867 1.472174528 0.505703616 1.053199409]
+o2-native,3,16,1,[0.717585287 0.277515543 0.429342348 0.450262579 0.659715970 0.769447839 0.885061758],[2.061183196 1.101437214 1.013272768 1.038607873 1.279145671 1.716378270 0.976653777]
+o2-native,3,1656,1,[2.033102200 1.230851287 1.023268669 1.474215566 1.257860849 1.086052076 0.857054067],[0.833963034 0.836225243 1.205252489 0.690702934 1.047743834 0.434149679 1.100944799]
+o2-native,3,8192,1,[0.537897223 1.035724601 0.961864409 0.760568146 1.063280568 0.961853836 1.199615214],[1.373817436 1.662854824 1.340214520 1.204449336 1.074073842 0.768858766 0.497825539]
+o2-native,3,8192,64,[1.092501693 1.053179715 1.228223658 0.742173461 1.145259430 1.139584052 0.854128745],[1.824925297 0.835371667 0.696560493 0.948112807 0.952826891 0.946597545 0.507531564]
+o3-native,1,1,1,[0.817905776 0.899274265 0.953638856 0.823076431 1.018462406 0.963489341 0.951483063],[1.038095499 1.101853403 0.820445503 1.498716045 0.960274262 0.924072171 0.777368499]
+o3-native,1,16,1,[0.910379830 1.023387272 1.015783250 0.908243850 1.373367641 0.964762417 0.888552679],[1.240575419 0.996865081 1.068008842 0.956704199 1.154414851 1.410831749 0.984017527]
+o3-native,1,1656,1,[1.569608632 0.337922134 0.948944851 1.026990854 0.747312793 1.048607787 1.322995270],[0.435762030 1.043340926 1.216625805 1.118445323 1.401478047 0.893848614 0.645966421]
+o3-native,1,8192,1,[0.869835630 1.292927028 0.874130136 1.088043117 1.005123008 0.794510484 0.818949792],[0.593506049 2.035540471 1.057271870 0.980351232 0.807993591 0.979820418 0.966118389]
+o3-native,1,8192,64,[0.864167909 1.379279549 1.316173061 0.352032546 1.275819693 1.019884332 1.464312573],[0.933782916 0.954044442 1.109240206 0.983493481 0.746969347 0.939037637 0.721702185]
+o3-native,2,1,1,[0.918564567 1.066688610 0.836646884 0.635687635 0.993062865 1.065644604 0.909583105],[1.029421068 0.997929932 0.836925847 1.267332327 0.849864524 0.839855282 1.267880598]
+o3-native,2,16,1,[0.906918129 1.113532382 1.137548112 1.220649852 1.036778574 0.921807226 1.303285335],[1.041151695 1.005129236 0.719947346 1.044471113 0.911035736 0.900354733 1.334177465]
+o3-native,2,1656,1,[0.724459501 1.215652356 0.727889483 0.677792758 0.876362509 0.739737619 1.080318549],[1.233999501 1.357684697 1.168011330 0.938407877 1.052695046 1.117357021 1.037655812]
+o3-native,2,8192,1,[1.041953822 1.004940266 0.994184178 0.907169155 0.993130010 0.971958654 1.052598588],[0.652235012 1.000718618 1.373434913 0.970606143 1.114156533 1.088227428 0.668188116]
+o3-native,2,8192,64,[0.655116472 0.747502562 0.746910604 1.111988986 0.822032733 0.808181241 0.993754956],[0.772145333 0.763314896 0.900203468 0.839285133 1.030960355 1.039107387 0.974328868]
+o3-native,3,1,1,[1.000326875 1.018940431 0.988603748 0.997081099 0.992422515 0.990997282 1.016026563],[1.011803185 1.016898187 1.002498305 1.016574146 1.038347512 1.018684042 1.014708789]
+o3-native,3,16,1,[0.995088439 0.986777712 0.998709609 0.974105093 0.983240470 1.006856998 0.989321619],[0.983017615 1.004893265 0.979606775 0.946799616 1.011945806 0.990336341 0.991685112]
+o3-native,3,1656,1,[1.315605172 1.036600675 0.849397751 1.211993206 0.901158745 0.881242320 0.977198945],[1.182028907 1.137782325 1.045821693 1.210240387 1.043254284 0.774021288 0.978602087]
+o3-native,3,8192,1,[0.664744556 1.278188271 0.938874251 0.969111015 0.990342208 0.927948571 1.040661324],[0.840449279 1.217441136 0.970875393 1.001049543 0.997000998 1.043919484 1.112942886]
+o3-native,3,8192,64,[1.049991495 1.276390105 1.020736157 1.241008010 1.035891995 0.967543966 0.944932133],[0.973337019 1.095401839 1.657544527 0.949178604 0.762748211 0.619967244 0.834633519]

@@ -1,5 +1,9 @@
 // CPU-only contract tests for rg_text_gpu_queue_quads, shared by C, SSE2 and ASM builds.
 
+#if defined(__linux__) && !defined(_DEFAULT_SOURCE)
+#define _DEFAULT_SOURCE 1
+#endif
+
 #include "../src/rg_text_gpu.h"
 
 #include <stddef.h>
@@ -13,6 +17,9 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#elif defined(__linux__)
+#include <sys/mman.h>
+#include <unistd.h>
 #endif
 
 #define PACK_CAPACITY 65u
@@ -215,21 +222,35 @@ static int pack_test_contract(PackFixture* fixture)
 	return 1;
 }
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__linux__)
 static int pack_test_page_ends(PackFixture* fixture)
 {
 	// A protected page catches overreads too, including in uninstrumented assembly.
+#if defined(_WIN32)
 	SYSTEM_INFO info;
 	GetSystemInfo(&info);
 	size_t page_size = (size_t)info.dwPageSize;
+#else
+	long page_size_result = sysconf(_SC_PAGESIZE);
+	CHECK(page_size_result > 0, "query protected page size");
+	size_t page_size = (size_t)page_size_result;
+#endif
 	u8* pages[3] = {NULL, NULL, NULL};
 	int ok = 0;
 	for (u32 i = 0u; i < 3u; i++)
 	{
+#if defined(_WIN32)
 		pages[i] = (u8*)VirtualAlloc(NULL, page_size * 2u, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 		if (!pages[i]) goto done;
 		DWORD old_protection;
 		if (!VirtualProtect(pages[i] + page_size, page_size, PAGE_NOACCESS, &old_protection)) goto done;
+#else
+		void* allocation = mmap(NULL, page_size * 2u, PROT_READ | PROT_WRITE,
+		                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+		if (allocation == MAP_FAILED) goto done;
+		pages[i] = (u8*)allocation;
+		if (mprotect(pages[i] + page_size, page_size, PROT_NONE) != 0) goto done;
+#endif
 	}
 	RgTextQuad* source = (RgTextQuad*)(pages[0] + page_size - sizeof(RgTextQuad));
 	RgTextGpuVertex* vertices = (RgTextGpuVertex*)(pages[1] + page_size - sizeof(RgTextGpuVertex) * 4u);
@@ -249,12 +270,27 @@ static int pack_test_page_ends(PackFixture* fixture)
 	// Full capacity and zero input must not touch even an inaccessible source.
 	const RgTextQuad* inaccessible = (const RgTextQuad*)(pages[0] + page_size);
 	if (rg_text_gpu_queue_quads(&renderer, inaccessible, 1u) != 0u ||
-	    rg_text_gpu_queue_quads(&renderer, inaccessible, 0u) != 0u) goto done;
+	    rg_text_gpu_queue_quads(&renderer, inaccessible, 0u) != 0u ||
+	    renderer.quad_count != 1u || renderer.vertex_count != 4u || renderer.index_count != 6u ||
+	    memcmp(vertices, fixture->expected_vertices, sizeof(*vertices) * 4u) != 0 ||
+	    memcmp(indices, fixture->expected_indices, sizeof(*indices) * 6u) != 0) goto done;
+	// Isolate the zero-count guard: capacity is available, but source remains inaccessible.
+	renderer.quad_count = 0u;
+	renderer.vertex_count = 0u;
+	renderer.index_count = 0u;
+	if (rg_text_gpu_queue_quads(&renderer, inaccessible, 0u) != 0u ||
+	    renderer.quad_count != 0u || renderer.vertex_count != 0u || renderer.index_count != 0u ||
+	    memcmp(vertices, fixture->expected_vertices, sizeof(*vertices) * 4u) != 0 ||
+	    memcmp(indices, fixture->expected_indices, sizeof(*indices) * 6u) != 0) goto done;
 	ok = 1;
 done:
 	for (u32 i = 0u; i < 3u; i++)
 	{
+#if defined(_WIN32)
 		if (pages[i]) VirtualFree(pages[i], 0u, MEM_RELEASE);
+#else
+		if (pages[i] && munmap(pages[i], page_size * 2u) != 0) ok = 0;
+#endif
 	}
 	if (!ok) fprintf(stderr, "FAIL: protected page boundary packing test\n");
 	return ok;
@@ -266,7 +302,7 @@ int main(void)
 	PackFixture fixture;
 	int ok = pack_fixture_init(&fixture);
 	if (ok) ok = pack_test_contract(&fixture);
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(__linux__)
 	if (ok) ok = pack_test_page_ends(&fixture);
 #endif
 	free(fixture.source.allocation);

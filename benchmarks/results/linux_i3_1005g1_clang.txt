@@ -1,0 +1,358 @@
+rg_text Linux x86-64 baseline measurements: clang, 2026-10-02
+These measurements use the pre-change runtime and the updated benchmark harness.
+The final runtime source is byte-for-byte identical to that baseline.
+Seven warmed samples per run; median/min/max reported below.
+Baseline runs were interleaved with candidates; earlier cross-process candidate results are excluded.
+Machine variation is substantial. These are host baselines, not a compiler ranking.
+Paths are normalized; <baseline> uses the runtime revision below and the
+current benchmark harness, <rg_core> is the dependency checkout, and
+<baked.font> is the baked Inter fixture identified by its SHA256.
+See docs/linux_validation.md for interpretation and reproduction.
+
+===== reproducibility metadata =====
+{
+  "measurement_started_utc": "2026-10-02T13:37:41.613753+00:00",
+  "runtime_revision": "5331db7dee83338dacbf8f2e7b90d69acb60bac1",
+  "compiler": "Ubuntu clang version 19.1.1 (1ubuntu1~24.04.2)",
+  "flags": "-std=c99 -pedantic-errors -O2 -Wall -Wextra -Werror; no LTO, fast-math or native ISA target",
+  "host": "Linux Mint 22.1; Linux 6.8.0-60-generic; Intel Core i3-1005G1; x86-64; 2 cores / 4 threads",
+  "cache": "48 KiB L1d and 32 KiB L1i per core; 512 KiB L2 per core; 4 MiB shared L3",
+  "affinity_cpu": 0,
+  "power": "intel_pstate; powersave; balance_performance EPP; turbo enabled; 400-3400 MHz; unchanged",
+  "sdl_version": "3.2.18",
+  "rg_core_revision": "d5d3f4413da22568572a37f5c6bf4e0506c68a2a",
+  "rg_core_dirty": true,
+  "rg_core_header_sha256": {
+    "src/rg_algo.h": "810c82276bca3109ac48d208d982742bb4ad72f57c1b51051953421b9553a41d",
+    "src/rg_assert.h": "4fc521c4541fafd0fa294fd8a8038c01f01b7bb83fda6cc724546d54045e9921",
+    "src/rg_bin.h": "84e537ebd174dcd83908a0b1e95a736bf38e2fa1ed146073b3d72ac88b3b62a2",
+    "src/rg_containers.h": "d128db790fb65a66ca4eb44e635222e322bae7a2dd8d9b175b2ebd1f07a592d3",
+    "src/rg_defs.h": "179b6e6e69699cc2027226088c6961ad625c6dbcb6d602b92bf3313d7636a0e6",
+    "src/rg_gpu.h": "58b53d4401308a145d94678b5d2467309ea66e73934092e0f5cce57cbcf27b64",
+    "src/rg_hash.h": "8087deea280d1e886d5603b591fefa9b98c0dfa8c7c024bac72eefafad93a551",
+    "src/rg_input.h": "0eaf5d290cb3996eefcdd1badd2c31d381735700e13ac7ab21ece1cd9c6d6b1a",
+    "src/rg_log.h": "0c88566a5f7c1924dbeb64f1e98648c49c077048b06cf0a42f20729b990ef451",
+    "src/rg_math.h": "5910b22f0388209b78f44940377bd56b5dbb21a2e475060537ba3e7ba42f6267",
+    "src/rg_math_cam.h": "9591fde0a865a287c74ff146f229792797a73a5685dcfcc353922ccee12033cf",
+    "src/rg_math_color.h": "52b09f46353972c24e75bfce7c5a5e1ac0ede86fdc2023056cb409c9bcd14744",
+    "src/rg_math_core.h": "deba6b699f97d0519414bcb3c3d1ea7326688462b5dba62e8aa1c5dc35c7762a",
+    "src/rg_math_curve.h": "14bab6994da63d32e43a3be596a1d89e72acc243d702dbea708b69a60f80ad2b",
+    "src/rg_math_euler.h": "724d3f1dbd51d9a08d3c6df1c9eefb49d10ea27e454bf216c2b12146f565398d",
+    "src/rg_math_geom.h": "17a61f0b5264557c8f094a9f139dbae850f355248ea15eb54836889cc1b96d34",
+    "src/rg_math_io.h": "45bff7468da46fe818b1ba577727d851d54135e2c11056d7b4fa19180393461b",
+    "src/rg_math_mat.h": "472db180c3a4d15e5079e23476657489c52b5adcb24ada9cbe6a6b5f361d9195",
+    "src/rg_math_noise.h": "f8ca8b9ea3176c4c910a3617fb4e8f032ae760eeb3d122d907889a148fabfc51",
+    "src/rg_math_quat.h": "126748e1a64ecf65ccbc0bd7894c6d2bf06b308a3e0cbca9fb2526e8cb8fb229",
+    "src/rg_math_scalar.h": "1c8fbc992bffd47fd2e24ad9fa87383805d5fd5e97972a54581ea60dbc2b58d8",
+    "src/rg_math_vec.h": "5635e17ec30f459362608f8ba3cbbeda049994a3855bcfc4ff43502ea92b77e2",
+    "src/rg_mem.h": "6b7e80fd842f1e079087c43e9d0ae4119f525a2badcb0790b24192e5d2eaf868",
+    "src/rg_prof.h": "5a97c472c5b0f6e4d5d6c9e4411eabcf7b5698c1a673c07c23bd8182d2114c20",
+    "src/rg_random.h": "69f20d9d4682fb2175c6ddf4adde222c0cd96b231f53a0c5ba39fd20c21745be",
+    "src/rg_sdl.h": "80c7f95b9ba1bc9b7ca76eb231cf9b24d7f17d461af7ee0c544b52d77ecbf864",
+    "src/rg_sprintf.h": "86fb06fd8db7fbf5b52274c413b234319e678a8598625463ad16fc9ac417c5fa",
+    "src/rg_sprintf_asm.h": "cff863bb2617d5afcc16c86a0cafbff302371814453779be3362af3e249fadc0",
+    "src/rg_sprintf_hybrid.h": "d0edf5fe03155a478a8264104ae8d0a4edf680db42721a123b9d3db60cba80b4",
+    "src/rg_string.h": "a792e445297ecbbb0f7b895061e2bf3b7317e4ba39fd126d7a72875ce35eec7d",
+    "src/rg_time.h": "034e4f4833f29472bbd34aa4942ae2f2e4e2c7dfdaacaee5ad3cbe00b444c91f",
+    "src/rg_window.h": "4787069c37661723d0086b34678edf0416ce0aa32e34f5b935143607ceb677f7"
+  },
+  "runtime_sha256": {
+    "asm/rg_text_gpu_pack_quads_x64.asm": "db8fb2c7aa549990163fe75cd8510ae41ba9b25d487c3ff60e54de6624322872",
+    "rg_text.h": "6ccbb0f565ee9aecf3372e9cc376c3cee04e27f21c018221fd38cab412fcd95c",
+    "rg_text_gpu.h": "168a175243e132815d8c280cc8a485a6f18157b1ec07c2524dfffc52bc937064"
+  },
+  "harness_sha256": {
+    "bench_gpu_pack.c": "76503afeff3ce12bf2c0e50a7be6c705a7e224a354d90f7c9d7a9b5c2d280760",
+    "bench_text.c": "1cd42eecdf3b342808b7661814b7849e942ef90bcbf2f8e5c6c0f492f2ee1def",
+    "quad_pack_reference.h": "1dc6492509a0b501cca14065325a2ecafc73dede4f2062a234685a7ee72f31d5"
+  },
+  "baked_font_sha256": "e31e494cee22d7a7b03355d70862e6631993a55dc75f23b3e0aa896bb1369e83",
+  "baked_font": "Inter Medium 4.1, 16 px, ASCII 32-126, with kerning",
+  "runs": 3,
+  "samples_per_run": 7
+}
+
+===== clang-19-layout-baseline-compile.log =====
+$ clang-19 -std=c99 -pedantic-errors -O2 -Wall -Wextra -Werror -I <rg_core>/src <baseline>/benchmarks/bench_text.c -lm -o <baseline>/clang-19-layout
+
+===== clang-19-layout-baseline-verify.log =====
+$ /usr/bin/taskset -c 0 <baseline>/clang-19-layout --verify-only <baked.font>
+
+Compiler: Clang 19.1.1 (1ubuntu1~24.04.2)
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== clang-19-layout-baseline-run-1.log =====
+$ /usr/bin/taskset -c 0 <baseline>/clang-19-layout <baked.font>
+
+Compiler: Clang 19.1.1 (1ubuntu1~24.04.2)
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=770.205 ns/call min=758.575 max=797.719 (32768 calls/trial)
+  capacity=1 median=30.850 ns/call min=30.231 max=31.677 (1048576 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=93418.438 ns/call min=77455.496 max=100904.582 (256 calls/trial)
+  capacity=1 median=22.881 ns/call min=21.350 max=27.186 (1048576 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=200956.266 ns/call min=171250.711 max=208858.609 (128 calls/trial)
+  capacity=1 median=59119.293 ns/call min=56071.918 max=66611.854 (512 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=213938.211 ns/call min=211522.625 max=221705.328 (128 calls/trial)
+  capacity=1 median=67240.156 ns/call min=62476.646 max=73137.588 (512 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=42983.203 ns/call min=41292.346 max=45287.586 (512 calls/trial)
+  capacity=1 median=27.387 ns/call min=26.616 max=28.777 (1048576 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=112576.117 ns/call min=107302.734 max=114906.367 (256 calls/trial)
+  capacity=1 median=30.739 ns/call min=30.049 max=31.247 (1048576 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=51068.037 ns/call min=45417.879 max=56008.330 (512 calls/trial)
+  capacity=1 median=13.263 ns/call min=11.773 max=16.234 (2097152 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=52229.906 ns/call min=51363.043 max=59452.002 (512 calls/trial)
+  capacity=1 median=34.189 ns/call min=33.532 max=38.603 (1048576 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=479.824 ns/call min=445.439 max=541.693 (65536 calls/trial)
+  capacity=1 median=21.136 ns/call min=17.099 max=24.127 (2097152 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=80091.049 ns/call min=66379.652 max=81740.234 (512 calls/trial)
+  capacity=1 median=29.160 ns/call min=28.996 max=29.798 (1048576 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== clang-19-layout-baseline-run-2.log =====
+$ /usr/bin/taskset -c 0 <baseline>/clang-19-layout <baked.font>
+
+Compiler: Clang 19.1.1 (1ubuntu1~24.04.2)
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=563.312 ns/call min=529.449 max=638.297 (32768 calls/trial)
+  capacity=1 median=19.407 ns/call min=16.470 max=23.262 (2097152 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=84553.773 ns/call min=65188.672 max=108148.836 (512 calls/trial)
+  capacity=1 median=25.668 ns/call min=19.607 max=31.998 (1048576 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=165673.633 ns/call min=156400.906 max=190050.648 (128 calls/trial)
+  capacity=1 median=52748.930 ns/call min=50036.566 max=64416.312 (512 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=178114.141 ns/call min=163765.023 max=199439.055 (128 calls/trial)
+  capacity=1 median=64654.908 ns/call min=56680.633 max=86120.762 (512 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=31602.992 ns/call min=28415.433 max=36335.746 (1024 calls/trial)
+  capacity=1 median=18.268 ns/call min=16.642 max=20.994 (1048576 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=88377.121 ns/call min=85494.648 max=108488.660 (256 calls/trial)
+  capacity=1 median=19.003 ns/call min=18.243 max=23.599 (1048576 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=43437.283 ns/call min=41784.762 max=52916.809 (512 calls/trial)
+  capacity=1 median=12.868 ns/call min=11.160 max=15.713 (2097152 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=45969.977 ns/call min=44845.531 max=51831.420 (512 calls/trial)
+  capacity=1 median=24.761 ns/call min=23.647 max=28.721 (1048576 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=424.412 ns/call min=418.881 max=523.350 (65536 calls/trial)
+  capacity=1 median=17.030 ns/call min=16.351 max=23.104 (1048576 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=53975.729 ns/call min=51346.848 max=60409.242 (512 calls/trial)
+  capacity=1 median=18.942 ns/call min=17.201 max=22.929 (1048576 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== clang-19-layout-baseline-run-3.log =====
+$ /usr/bin/taskset -c 0 <baseline>/clang-19-layout <baked.font>
+
+Compiler: Clang 19.1.1 (1ubuntu1~24.04.2)
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=588.300 ns/call min=523.694 max=620.026 (32768 calls/trial)
+  capacity=1 median=28.931 ns/call min=24.633 max=73.940 (1048576 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=114117.266 ns/call min=100956.930 max=300112.125 (128 calls/trial)
+  capacity=1 median=27.269 ns/call min=25.959 max=29.686 (1048576 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=183557.828 ns/call min=161170.773 max=206424.844 (128 calls/trial)
+  capacity=1 median=56671.408 ns/call min=49753.562 max=62587.395 (512 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=177938.805 ns/call min=159364.727 max=189945.047 (128 calls/trial)
+  capacity=1 median=51890.998 ns/call min=50517.311 max=57769.551 (512 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=30066.225 ns/call min=28175.749 max=40024.419 (1024 calls/trial)
+  capacity=1 median=25.781 ns/call min=17.111 max=28.038 (1048576 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=99937.816 ns/call min=86323.305 max=108541.289 (256 calls/trial)
+  capacity=1 median=21.957 ns/call min=20.427 max=24.265 (1048576 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=45916.736 ns/call min=43331.758 max=51603.697 (512 calls/trial)
+  capacity=1 median=12.176 ns/call min=10.885 max=14.902 (2097152 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=47750.859 ns/call min=46340.180 max=52758.330 (512 calls/trial)
+  capacity=1 median=25.134 ns/call min=23.342 max=28.360 (1048576 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=452.398 ns/call min=406.825 max=525.621 (65536 calls/trial)
+  capacity=1 median=21.121 ns/call min=16.862 max=21.681 (1048576 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=59370.328 ns/call min=50064.561 max=65882.570 (512 calls/trial)
+  capacity=1 median=18.351 ns/call min=16.798 max=21.063 (2097152 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== clang-19-packing-baseline-compile.log =====
+$ clang-19 -std=c99 -pedantic-errors -O2 -Wall -Wextra -Werror -I <rg_core>/src -isystem /usr/local/include <baseline>/benchmarks/bench_gpu_pack.c -L/usr/local/lib -Wl,-rpath,/usr/local/lib -Wl,--enable-new-dtags -lSDL3 -lm -o <baseline>/clang-19-packing
+
+===== clang-19-packing-baseline-verify.log =====
+$ /usr/bin/taskset -c 0 <baseline>/clang-19-packing --verify-only
+
+Compiler: Clang 19.1.1 (1ubuntu1~24.04.2)
+Platform: Linux; logical CPUs: 4; SSE2: yes; ASM comparison: disabled
+CPU packing only; seven alternating trials; benchmark does not set affinity; compile optimized without LTO.
+
+Bitwise, boundary, and counter checks passed. Checksum: 0
+
+===== clang-19-packing-baseline-run-1.log =====
+$ /usr/bin/taskset -c 0 <baseline>/clang-19-packing
+
+Compiler: Clang 19.1.1 (1ubuntu1~24.04.2)
+Platform: Linux; logical CPUs: 4; SSE2: yes; ASM comparison: disabled
+CPU packing only; seven alternating trials; benchmark does not set affinity; compile optimized without LTO.
+
+quads=1 buffers=1 working_set=0.000 MiB iterations=2000000
+  original     median=    11.498 ns min=    10.200 max=    13.542 original/median=1.000x
+  portable C   median=    11.226 ns min=     9.697 max=    12.502 original/median=1.024x
+  SSE2         median=     7.935 ns min=     7.529 max=    11.650 original/median=1.449x
+
+quads=16 buffers=1 working_set=0.003 MiB iterations=750000
+  original     median=   118.726 ns min=   106.553 max=   164.807 original/median=1.000x
+  portable C   median=   100.160 ns min=    85.991 max=   128.883 original/median=1.185x
+  SSE2         median=    57.519 ns min=    50.822 max=    79.021 original/median=2.064x
+
+quads=1656 buffers=1 working_set=0.341 MiB iterations=7246
+  original     median= 18637.169 ns min= 17916.425 max= 24766.820 original/median=1.000x
+  portable C   median= 16286.846 ns min= 15520.426 max= 21722.708 original/median=1.144x
+  SSE2         median= 11837.153 ns min= 10277.709 max= 15440.189 original/median=1.574x
+
+quads=8192 buffers=1 working_set=1.688 MiB iterations=1464
+  original     median=128226.073 ns min=100541.827 max=171812.822 original/median=1.000x
+  portable C   median= 95448.281 ns min= 84027.555 max=209856.375 original/median=1.343x
+  SSE2         median= 68039.857 ns min= 57415.768 max=118881.249 original/median=1.885x
+
+quads=8192 buffers=64 working_set=108.000 MiB iterations=1464
+  original     median=278273.589 ns min=231525.064 max=397100.237 original/median=1.000x
+  portable C   median=302044.661 ns min=269483.533 max=441717.733 original/median=0.921x
+  SSE2         median=334503.036 ns min=224133.928 max=383062.202 original/median=0.832x
+
+Bitwise, boundary, and counter checks passed. Checksum: 14985974338892662926
+
+===== clang-19-packing-baseline-run-2.log =====
+$ /usr/bin/taskset -c 0 <baseline>/clang-19-packing
+
+Compiler: Clang 19.1.1 (1ubuntu1~24.04.2)
+Platform: Linux; logical CPUs: 4; SSE2: yes; ASM comparison: disabled
+CPU packing only; seven alternating trials; benchmark does not set affinity; compile optimized without LTO.
+
+quads=1 buffers=1 working_set=0.000 MiB iterations=2000000
+  original     median=    18.037 ns min=    15.680 max=    21.469 original/median=1.000x
+  portable C   median=    16.609 ns min=    15.508 max=    18.245 original/median=1.086x
+  SSE2         median=    15.209 ns min=    12.724 max=    19.246 original/median=1.186x
+
+quads=16 buffers=1 working_set=0.003 MiB iterations=750000
+  original     median=   176.712 ns min=   169.394 max=   232.450 original/median=1.000x
+  portable C   median=   163.664 ns min=   145.160 max=   197.232 original/median=1.080x
+  SSE2         median=    99.553 ns min=    79.078 max=   120.531 original/median=1.775x
+
+quads=1656 buffers=1 working_set=0.341 MiB iterations=7246
+  original     median= 27228.026 ns min= 26537.119 max= 32175.301 original/median=1.000x
+  portable C   median= 24070.601 ns min= 22902.940 max= 26889.741 original/median=1.131x
+  SSE2         median= 15979.412 ns min= 14351.955 max= 20287.235 original/median=1.704x
+
+quads=8192 buffers=1 working_set=1.688 MiB iterations=1464
+  original     median=211467.095 ns min=170092.637 max=333049.795 original/median=1.000x
+  portable C   median=201415.624 ns min=151810.902 max=260655.254 original/median=1.050x
+  SSE2         median=137461.541 ns min=109790.512 max=181541.628 original/median=1.538x
+
+quads=8192 buffers=64 working_set=108.000 MiB iterations=1464
+  original     median=221758.316 ns min=201619.605 max=278524.875 original/median=1.000x
+  portable C   median=243436.276 ns min=222039.682 max=300041.612 original/median=0.911x
+  SSE2         median=244517.696 ns min=223334.009 max=282366.096 original/median=0.907x
+
+Bitwise, boundary, and counter checks passed. Checksum: 14985974338892662926
+
+===== clang-19-packing-baseline-run-3.log =====
+$ /usr/bin/taskset -c 0 <baseline>/clang-19-packing
+
+Compiler: Clang 19.1.1 (1ubuntu1~24.04.2)
+Platform: Linux; logical CPUs: 4; SSE2: yes; ASM comparison: disabled
+CPU packing only; seven alternating trials; benchmark does not set affinity; compile optimized without LTO.
+
+quads=1 buffers=1 working_set=0.000 MiB iterations=2000000
+  original     median=    21.698 ns min=    16.018 max=    34.027 original/median=1.000x
+  portable C   median=    18.295 ns min=    14.614 max=    34.673 original/median=1.186x
+  SSE2         median=    18.844 ns min=    12.687 max=    33.461 original/median=1.151x
+
+quads=16 buffers=1 working_set=0.003 MiB iterations=750000
+  original     median=   181.063 ns min=   161.466 max=   191.498 original/median=1.000x
+  portable C   median=   148.669 ns min=   137.225 max=   193.342 original/median=1.218x
+  SSE2         median=    86.860 ns min=    77.370 max=   113.960 original/median=2.085x
+
+quads=1656 buffers=1 working_set=0.341 MiB iterations=7246
+  original     median= 30810.462 ns min= 18366.809 max= 34906.781 original/median=1.000x
+  portable C   median= 28732.892 ns min= 17182.693 max= 33939.954 original/median=1.072x
+  SSE2         median= 22166.620 ns min= 11075.758 max= 27193.934 original/median=1.390x
+
+quads=8192 buffers=1 working_set=1.688 MiB iterations=1464
+  original     median=141154.507 ns min=109785.847 max=178181.488 original/median=1.000x
+  portable C   median=113781.474 ns min= 82252.305 max=123248.793 original/median=1.241x
+  SSE2         median= 80012.766 ns min= 57939.018 max= 86817.727 original/median=1.764x
+
+quads=8192 buffers=64 working_set=108.000 MiB iterations=1464
+  original     median=269872.643 ns min=213933.346 max=289849.824 original/median=1.000x
+  portable C   median=265164.292 ns min=202482.604 max=331350.367 original/median=1.018x
+  SSE2         median=309844.489 ns min=199239.970 max=614532.980 original/median=0.871x
+
+Bitwise, boundary, and counter checks passed. Checksum: 14985974338892662926

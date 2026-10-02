@@ -59,3 +59,7 @@ shaders/Compiled/
 
 # Manifest-mode vcpkg output
 vcpkg_installed/
+
+# Linux runner output and local dependency checkouts
+/build/
+/_deps/

@@ -471,6 +471,42 @@ static void test_unordered_lookup(void)
 	TEST_PASS();
 }
 
+static void test_sorted_lookup_boundaries(void)
+{
+	RgTextGlyph glyphs[5] = {{0}};
+	static const u32 keys[] = {32u, 33u, 35u, 1000u, 1114111u};
+	static const u32 queries[] = {0u, 31u, 32u, 33u, 34u, 35u, 36u,
+	                             999u, 1000u, 1001u, 1114111u, 0xFFFFFFFFu};
+	RgTextKerning pairs[] = {{32u, 33u, -1}, {35u, 32u, -2},
+	                         {35u, 1000u, -3}, {1000u, 35u, -4}};
+	for (u32 i = 0u; i < RG_ARRAY_COUNT(keys); i++) glyphs[i].codepoint = keys[i];
+	RgTextFont sorted = {0};
+	sorted.glyphs = glyphs;
+	sorted.kernings = pairs;
+	sorted.fallback_codepoint = 33u;
+	sorted.internal_lookup_flags = RG_TEXT_LOOKUP_SORTED;
+	// Include empty and singleton tables, a dense prefix, holes, and high keys.
+	for (u32 count = 0u; count <= RG_ARRAY_COUNT(glyphs); count++)
+	{
+		sorted.glyph_count = count;
+		sorted.kerning_count = count < RG_ARRAY_COUNT(pairs) ? count : RG_ARRAY_COUNT(pairs);
+		RgTextFont linear = sorted;
+		linear.internal_lookup_flags = 0u;
+		for (u32 i = 0u; i < RG_ARRAY_COUNT(queries); i++)
+		{
+			TEST_ASSERT(rg_text_find_glyph_exact(&sorted, queries[i]) ==
+			            rg_text_find_glyph_exact(&linear, queries[i]), "sorted exact lookup matches linear");
+			TEST_ASSERT(rg_text_find_glyph(&sorted, queries[i]) ==
+			            rg_text_find_glyph(&linear, queries[i]), "sorted fallback matches linear");
+			for (u32 j = 0u; j < RG_ARRAY_COUNT(queries); j++)
+				TEST_ASSERT(rg_text_find_kerning(&sorted, queries[i], queries[j]) ==
+				            rg_text_find_kerning(&linear, queries[i], queries[j]),
+				            "sorted pair endpoints and gaps match linear");
+		}
+	}
+	TEST_PASS();
+}
+
 static void test_duplicate_records(void)
 {
 	static const char* duplicates[] = {
@@ -630,6 +666,7 @@ int main(int argc, char** argv)
 	test_parse_failures();
 	test_load_capacity_boundaries();
 	test_unordered_lookup();
+	test_sorted_lookup_boundaries();
 	test_duplicate_records();
 	test_large_unordered_font();
 	test_fallback_kerning_and_alignment();

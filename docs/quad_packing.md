@@ -35,21 +35,24 @@ build.bat test_gpu_pack_asm
 ```
 
 On an x86-64 system with GCC or Clang and SDL3 development files, the C/SSE2
-comparison can also be built without the Windows assembly:
+comparison can also be built without the Windows assembly. The Linux runner
+discovers SDL3 through `pkg-config`:
 
 ```sh
-cc -std=c99 -O2 -Wall -Wextra -Werror -I "$RG_CORE_DIR/src" \
-  $(pkg-config --cflags sdl3) benchmarks/bench_gpu_pack.c \
-  $(pkg-config --libs sdl3) -lm -o bench_gpu_pack
-./bench_gpu_pack
+CC=gcc ./build.sh bench_gpu_pack
+CC=clang ./build.sh bench_gpu_pack
+./build.sh bench_gpu_pack --verify-only
 ```
+
+See [Linux validation and measurements](linux_validation.md) for the paired
+baseline/current driver, compiler-specific decisions, and raw results.
 
 ## Method
 
 Each binary checks identical output bytes and counters before timing. It tests
 append offsets, capacity clipping, zero/null inputs, unaligned buffers, signed
 zero, infinities, and NaN payloads. The public API has separate packing contract
-tests, including protected-page boundaries on Windows. Output hashes are
+tests, including protected-page boundaries on Windows and Linux. Output hashes are
 checked after every timed trial, outside the measured interval.
 
 Seven trials alternate method order and report median, minimum, and maximum.

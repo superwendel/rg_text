@@ -25,6 +25,38 @@ See [the API and format notes](docs/rg_text.md) for usage.
 
 ## Build and test
 
+### Linux x86-64
+
+`build.sh` supports GCC and Clang, with `RG_CORE_DIR` defaulting to `../rg_core`.
+SDL3, FreeType, and HarfBuzz development files are discovered with `pkg-config`.
+Build products are kept under `build/linux/<compiler>/` and commands can be run
+from any working directory.
+
+```sh
+./build.sh test                  # Renderer-neutral tests, assertions on and off
+CC=gcc ./build.sh test_ci        # CPU checks, benchmark verification, GPU builds
+CC=clang ./build.sh test_ci
+CC=clang ./build.sh test_sanitize
+FUZZ_CC=clang ./build.sh test_fuzz
+./build.sh bench                 # Layout timing, or: bench path/to/font.font
+./build.sh bench_gpu_pack        # CPU packing: original, portable C, SSE2
+```
+
+The complete local gate is `./build.sh test_release`. It additionally requires
+the checksum-pinned Inter Medium 4.1 font in `RG_TEXT_TEST_FONT`, Clang with
+libFuzzer, a shader compiler, and a working Vulkan/display environment. Individual
+targets include `test_baker`, `test_baker_sanitize`, `test_gpu_device`, and
+`example_smoke`. Missing requirements fail explicitly; `test_ci` does not execute
+GPU rendering. See [Linux validation and benchmark results](docs/linux_validation.md)
+for prerequisites, reproduction commands, and the measured optimization decisions.
+
+Enable SSE2 for application/device builds with `RG_TEXT_GPU_USE_SSE2=1`.
+The assembly option is Windows-only. `CC`, `CPPFLAGS`, `CFLAGS`, `LDFLAGS`,
+`LDLIBS`, `PKG_CONFIG_PATH`, and `RG_TEXT_BUILD_DIR` can customize local builds;
+`./build.sh --help` lists all targets and settings.
+
+### Windows x64
+
 From an x64 Visual Studio Developer Command Prompt:
 
 ```bat
