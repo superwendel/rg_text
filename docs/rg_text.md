@@ -45,24 +45,31 @@ RgTextSize size = rg_text_measure_cstr(&font, "Hello", 1.0f);
 ```
 
 The loader sorts the caller's glyph and kerning arrays in place without
-allocating, then uses binary searches during layout. Duplicate glyph
-codepoints and duplicate kerning pairs are rejected. Array contents and order
-may change even if loading fails; use a font only after a successful load.
-The arrays must outlive the font and remain unchanged while it is in use.
-The source RGFONT bytes can be released after loading.
+allocating, then builds small indexes inside the font: a direct table for the
+128 ASCII codepoints, the fallback glyph's index, and each glyph's range of
+kerning pairs (`kerning_first` and `kerning_count` in `RgTextGlyph`). Layout
+then resolves an ASCII glyph with one table load, any other glyph with a
+binary search, and a kerning pair by searching only the left glyph's pairs.
+Duplicate glyph codepoints and duplicate kerning pairs are rejected. Array
+contents and order may change even if loading fails; use a font only after a
+successful load. The arrays must outlive the font and remain unchanged while
+it is in use. The source RGFONT bytes can be released after loading.
 
 Manually assembled fonts remain supported: zero-initialize `RgTextFont`, fill
 its arrays and counts, and leave its internal lookup flags at zero. Those
 fonts use linear lookup and may have unsorted arrays. Do not copy a loaded
 font and replace or reorder its arrays without clearing its internal lookup
-flags or reloading it.
+flags or reloading it. Changing `fallback_codepoint` after loading is allowed.
 
 Fallback glyphs use the kerning pairs for the glyphs actually displayed.
-Left-aligned quad generation does not premeasure lines and stops when the
-output capacity is reached. Center and right alignment measure each line;
-when `align_width` is not positive, they also measure the full text to choose
-an alignment width. A build call returns the number of quads written and may
-truncate to the provided capacity.
+Left-aligned quad generation stops when the output capacity is reached.
+Center and right alignment resolve each glyph once: a line's quads are emitted
+relative to the pen and placed when the line ends. When `align_width` is not
+positive, the widest line sets the alignment width, so every line is placed
+after the whole text has been scanned, and scanning continues past the output
+capacity to find that width. A build call returns the number of quads written
+and may truncate to the provided capacity; output is identical to measuring
+each line first.
 
 ## RGFONT format
 

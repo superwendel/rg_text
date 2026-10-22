@@ -96,6 +96,10 @@ typedef struct RgTextGlyph
 	i32 x_offset;
 	i32 y_offset;
 	i32 x_advance;
+	// Set by the loader: the sorted kerning pairs whose left codepoint is this
+	// glyph. Zero for manually populated fonts, which search the whole table.
+	u32 kerning_first;
+	u32 kerning_count;
 } RgTextGlyph;
 
 typedef struct RgTextKerning
@@ -118,6 +122,10 @@ typedef struct RgTextFont
 	// Set by the loader. Keep zero for manually populated, unsorted arrays.
 	// Clear before changing loaded glyph codepoints or kerning pair keys.
 	u32 internal_lookup_flags;
+	// Loader-built indexes, used only with RG_TEXT_LOOKUP_INDEXED: glyph
+	// index + 1 per ASCII codepoint and for the fallback glyph; zero is absent.
+	u16 ascii_glyph_index[128];
+	u32 fallback_glyph_index;
 } RgTextFont;
 
 typedef struct RgTextFontLoadDesc
@@ -261,6 +269,9 @@ typedef struct RgTextToken
 } RgTextToken;
 
 #define RG_TEXT_LOOKUP_SORTED 1u
+// The loader also filled ascii_glyph_index, fallback_glyph_index, and each
+// glyph's kerning range. Manually sorted fonts set only RG_TEXT_LOOKUP_SORTED.
+#define RG_TEXT_LOOKUP_INDEXED 2u
 
 RGINLINE int rg_text_glyph_key_less(const RgTextGlyph* a, const RgTextGlyph* b)
 {
@@ -543,6 +554,12 @@ RGINLINE const RgTextGlyph* rg_text_find_glyph_exact(const RgTextFont* font, u32
 		return NULL;
 	}
 
+	if (codepoint < 128u && (font->internal_lookup_flags & RG_TEXT_LOOKUP_INDEXED))
+	{
+		u32 index = font->ascii_glyph_index[codepoint];
+		return index ? &font->glyphs[index - 1u] : NULL;
+	}
+
 	if (font->internal_lookup_flags & RG_TEXT_LOOKUP_SORTED)
 	{
 		u32 low = 0u;
@@ -579,10 +596,55 @@ RGINLINE const RgTextGlyph* rg_text_find_glyph(const RgTextFont* font, u32 codep
 
 	if (font && font->fallback_codepoint != codepoint)
 	{
+		if (font->internal_lookup_flags & RG_TEXT_LOOKUP_INDEXED)
+		{
+			// The cached index serves the loaded fallback; a fallback codepoint
+			// changed after loading takes the ordinary search.
+			u32 index = font->fallback_glyph_index;
+			if (index && font->glyphs[index - 1u].codepoint == font->fallback_codepoint)
+			{
+				return &font->glyphs[index - 1u];
+			}
+		}
 		return rg_text_find_glyph_exact(font, font->fallback_codepoint);
 	}
 
 	return NULL;
+}
+
+// Search one glyph's loader-built kerning range for a right codepoint.
+RGINLINE i32 rg_text_glyph_range_kerning(const RgTextFont* font, const RgTextGlyph* left, u32 right)
+{
+	const RgTextKerning* pairs = font->kernings + left->kerning_first;
+	u32 count = left->kerning_count;
+	if (count <= 8u)
+	{
+		for (u32 i = 0u; i < count; i++)
+		{
+			if (pairs[i].right == right) return pairs[i].x_advance;
+		}
+		return 0;
+	}
+	u32 low = 0u;
+	u32 high = count;
+	while (low < high)
+	{
+		u32 mid = low + (high - low) / 2u;
+		if (pairs[mid].right < right) low = mid + 1u;
+		else if (pairs[mid].right > right) high = mid;
+		else return pairs[mid].x_advance;
+	}
+	return 0;
+}
+
+// Kerning for a glyph already resolved as the left side of a pair.
+RGINLINE i32 rg_text_glyph_kerning(const RgTextFont* font, const RgTextGlyph* left, u32 right)
+{
+	if (font->internal_lookup_flags & RG_TEXT_LOOKUP_INDEXED)
+	{
+		return font->kernings ? rg_text_glyph_range_kerning(font, left, right) : 0;
+	}
+	return rg_text_find_kerning(font, left->codepoint, right);
 }
 
 RGINLINE i32 rg_text_find_kerning(const RgTextFont* font, u32 left, u32 right)
@@ -590,6 +652,17 @@ RGINLINE i32 rg_text_find_kerning(const RgTextFont* font, u32 left, u32 right)
 	if (!font || !font->kernings)
 	{
 		return 0;
+	}
+
+	if (font->internal_lookup_flags & RG_TEXT_LOOKUP_INDEXED)
+	{
+		// Pairs whose left codepoint has a glyph live in that glyph's range.
+		// Pairs for codepoints without glyphs remain in the full table.
+		const RgTextGlyph* glyph = rg_text_find_glyph_exact(font, left);
+		if (glyph)
+		{
+			return rg_text_glyph_range_kerning(font, glyph, right);
+		}
 	}
 
 	if (font->internal_lookup_flags & RG_TEXT_LOOKUP_SORTED)
@@ -641,7 +714,7 @@ RGINLINE f32 rg_text_line_width(const RgTextFont* font, const char* text, size_t
 
 		if (previous)
 		{
-			pen_x += (f32)rg_text_find_kerning(font, previous->codepoint, glyph->codepoint) * scale;
+			pen_x += (f32)rg_text_glyph_kerning(font, previous, glyph->codepoint) * scale;
 		}
 		pen_x += (f32)glyph->x_advance * scale;
 		previous = glyph;
@@ -877,7 +950,32 @@ RGINLINE int rg_text_font_load_rgfont(RgTextFont* font, const RgTextFontLoadDesc
 		if (font->kernings[i - 1u].left == font->kernings[i].left &&
 		    font->kernings[i - 1u].right == font->kernings[i].right) return 0;
 	}
-	font->internal_lookup_flags = RG_TEXT_LOOKUP_SORTED;
+	for (u32 i = 0u; i < glyph_count; i++)
+	{
+		u32 codepoint = font->glyphs[i].codepoint;
+		if (codepoint < 128u) font->ascii_glyph_index[codepoint] = (u16)(i + 1u);
+		if (codepoint == font->fallback_codepoint) font->fallback_glyph_index = i + 1u;
+	}
+	// Pairs are sorted by (left, right): each glyph's pairs form one contiguous
+	// range. Walk both sorted arrays together, assigning ranges per glyph.
+	for (u32 pair = 0u, glyph = 0u; pair < kerning_count && glyph < glyph_count;)
+	{
+		u32 left = font->kernings[pair].left;
+		if (font->glyphs[glyph].codepoint < left)
+		{
+			glyph++;
+			continue;
+		}
+		u32 first = pair;
+		while (pair < kerning_count && font->kernings[pair].left == left) pair++;
+		if (font->glyphs[glyph].codepoint == left)
+		{
+			font->glyphs[glyph].kerning_first = first;
+			font->glyphs[glyph].kerning_count = pair - first;
+			glyph++;
+		}
+	}
+	font->internal_lookup_flags = RG_TEXT_LOOKUP_SORTED | RG_TEXT_LOOKUP_INDEXED;
 
 	return 1;
 }
@@ -942,7 +1040,7 @@ RGINLINE RgTextSize rg_text_measure(const RgTextFont* font, const char* text, si
 
 		if (previous)
 		{
-			line_width += (f32)rg_text_find_kerning(font, previous->codepoint, glyph->codepoint) * scale;
+			line_width += (f32)rg_text_glyph_kerning(font, previous, glyph->codepoint) * scale;
 		}
 		line_width += (f32)glyph->x_advance * scale;
 		previous = glyph;
@@ -988,6 +1086,25 @@ RGINLINE size_t rg_text_build_quads(const RgTextFont* font,
 	return rg_text_build_quads_ex(&desc);
 }
 
+// Position one aligned line's quads once its width is known. Scratch fields
+// hold pen_x in x0, scaled x_offset in x1, and scaled width in color.r, so the
+// final arithmetic matches the original (line_x + pen_x) + offset ordering.
+RGINLINE void rg_text_place_aligned_line(const RgTextBuildDesc* desc, RgTextQuad* quads,
+                                         size_t first, size_t count,
+                                         f32 align_width, f32 line_width)
+{
+	f32 line_x = desc->x + (align_width - line_width) *
+	                           (desc->align == RG_TEXT_ALIGN_CENTER ? 0.5f : 1.0f);
+	for (size_t i = first; i < count; i++)
+	{
+		RgTextQuad* quad = &quads[i];
+		f32 gx = line_x + quad->x0 + quad->x1;
+		quad->x0 = gx;
+		quad->x1 = gx + quad->color.r;
+		quad->color = desc->color;
+	}
+}
+
 RGINLINE size_t rg_text_build_quads_ex(const RgTextBuildDesc* desc)
 {
 	if (!desc || !desc->font || !desc->text || !desc->quads ||
@@ -998,27 +1115,25 @@ RGINLINE size_t rg_text_build_quads_ex(const RgTextBuildDesc* desc)
 
 	const RgTextFont* font = desc->font;
 	int aligned = desc->align == RG_TEXT_ALIGN_CENTER || desc->align == RG_TEXT_ALIGN_RIGHT;
+	// Aligned lines are emitted relative to the pen and placed when the line
+	// ends, so each glyph is resolved once. Without an alignment width, the
+	// widest line decides, so every line waits until the text has been scanned;
+	// color.g then carries each quad's line width.
+	int auto_width = aligned && desc->align_width <= 0.0f;
 	f32 align_width = desc->align_width;
-	if (align_width <= 0.0f && aligned)
-	{
-		align_width = rg_text_measure(font, desc->text, desc->text_size, desc->scale).width;
-	}
+	f32 max_line_width = 0.0f;
 
 	size_t quad_count = 0u;
+	size_t line_first = 0u;
 	size_t offset = 0u;
-	f32 line_x = desc->x;
 	f32 line_y = desc->y;
 	f32 pen_x = 0.0f;
 	const RgTextGlyph* previous = NULL;
+	// Left-aligned output stops at capacity. Aligned output keeps scanning the
+	// current line (or, for automatic widths, the whole text) for widths only.
+	int emitting = 1;
 
-	if (aligned)
-	{
-		size_t line_end = rg_text_find_line_end(desc->text, desc->text_size, 0u);
-		f32 line_width = rg_text_line_width(font, desc->text, 0u, line_end, desc->scale);
-		line_x += (align_width - line_width) * (desc->align == RG_TEXT_ALIGN_CENTER ? 0.5f : 1.0f);
-	}
-
-	while (offset < desc->text_size && quad_count < desc->quad_capacity)
+	while (offset < desc->text_size)
 	{
 		u32 cp = rg_text_decode_utf8(desc->text, desc->text_size, &offset);
 		if (cp == '\r' || cp == '\n')
@@ -1027,15 +1142,25 @@ RGINLINE size_t rg_text_build_quads_ex(const RgTextBuildDesc* desc)
 			{
 				offset++;
 			}
-
-			line_y += (f32)font->metrics.line_height * desc->scale;
-			line_x = desc->x;
 			if (aligned)
 			{
-				size_t line_end = rg_text_find_line_end(desc->text, desc->text_size, offset);
-				f32 line_width = rg_text_line_width(font, desc->text, offset, line_end, desc->scale);
-				line_x += (align_width - line_width) * (desc->align == RG_TEXT_ALIGN_CENTER ? 0.5f : 1.0f);
+				if (auto_width)
+				{
+					if (pen_x > max_line_width) max_line_width = pen_x;
+					for (size_t i = line_first; i < quad_count; i++) desc->quads[i].color.g = pen_x;
+				}
+				else
+				{
+					rg_text_place_aligned_line(desc, desc->quads, line_first, quad_count,
+					                           align_width, pen_x);
+				}
+				if (!emitting && !auto_width)
+				{
+					return quad_count;
+				}
+				line_first = quad_count;
 			}
+			line_y += (f32)font->metrics.line_height * desc->scale;
 			pen_x = 0.0f;
 			previous = NULL;
 			continue;
@@ -1050,27 +1175,72 @@ RGINLINE size_t rg_text_build_quads_ex(const RgTextBuildDesc* desc)
 
 		if (previous)
 		{
-			pen_x += (f32)rg_text_find_kerning(font, previous->codepoint, glyph->codepoint) * desc->scale;
+			pen_x += (f32)rg_text_glyph_kerning(font, previous, glyph->codepoint) * desc->scale;
 		}
 
-		if (glyph->w > 0 && glyph->h > 0)
+		if (emitting && glyph->w > 0 && glyph->h > 0)
 		{
 			RgTextQuad* quad = &desc->quads[quad_count++];
-			f32 gx = line_x + pen_x + (f32)glyph->x_offset * desc->scale;
 			f32 gy = line_y + (f32)glyph->y_offset * desc->scale;
-			quad->x0 = gx;
 			quad->y0 = gy;
-			quad->x1 = gx + (f32)glyph->w * desc->scale;
 			quad->y1 = gy + (f32)glyph->h * desc->scale;
 			quad->u0 = (f32)glyph->x / (f32)font->metrics.atlas_width;
 			quad->v0 = (f32)glyph->y / (f32)font->metrics.atlas_height;
 			quad->u1 = ((f32)glyph->x + (f32)glyph->w) / (f32)font->metrics.atlas_width;
 			quad->v1 = ((f32)glyph->y + (f32)glyph->h) / (f32)font->metrics.atlas_height;
-			quad->color = desc->color;
+			if (aligned)
+			{
+				quad->x0 = pen_x;
+				quad->x1 = (f32)glyph->x_offset * desc->scale;
+				quad->color.r = (f32)glyph->w * desc->scale;
+				quad->color.g = 0.0f;
+				quad->color.b = 0.0f;
+				quad->color.a = 0.0f;
+			}
+			else
+			{
+				f32 gx = desc->x + pen_x + (f32)glyph->x_offset * desc->scale;
+				quad->x0 = gx;
+				quad->x1 = gx + (f32)glyph->w * desc->scale;
+				quad->color = desc->color;
+			}
+			if (quad_count >= desc->quad_capacity)
+			{
+				if (!aligned)
+				{
+					break;
+				}
+				emitting = 0;
+			}
 		}
 
 		pen_x += (f32)glyph->x_advance * desc->scale;
 		previous = glyph;
+	}
+
+	if (aligned)
+	{
+		if (auto_width)
+		{
+			if (pen_x > max_line_width) max_line_width = pen_x;
+			for (size_t i = line_first; i < quad_count; i++) desc->quads[i].color.g = pen_x;
+			align_width = max_line_width;
+			size_t first = 0u;
+			while (first < quad_count)
+			{
+				// Lines sharing a width share a placement; a NaN width never
+				// compares equal, so always advance past the first quad.
+				size_t last = first + 1u;
+				f32 line_width = desc->quads[first].color.g;
+				while (last < quad_count && desc->quads[last].color.g == line_width) last++;
+				rg_text_place_aligned_line(desc, desc->quads, first, last, align_width, line_width);
+				first = last;
+			}
+		}
+		else
+		{
+			rg_text_place_aligned_line(desc, desc->quads, line_first, quad_count, align_width, pen_x);
+		}
 	}
 
 	return quad_count;

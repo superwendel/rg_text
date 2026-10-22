@@ -177,6 +177,55 @@ candidate's paired audit samples and unchanged C controls. Full experimental
 snapshots remain local under ignored `build/`; rejected patches and
 machine-local environment details are excluded from the published reports.
 
+## Observed results — 2026-10-22: indexed lookups and single-pass alignment
+
+Same host, GCC 13.3.0, `-std=c99 -pedantic-errors -O2`, pinned to logical CPU
+0, power settings unchanged, rg_core revision `c926c1d`. The paired driver
+compared baseline `83991b4` with the working tree, three alternating runs of
+seven samples each. Layout output checksums matched exactly, so quad bytes are
+unchanged.
+
+The loader now builds three indexes inside the font: a 128-entry ASCII glyph
+table, the fallback glyph's index, and each glyph's contiguous range of kerning
+pairs in the sorted pair array. Layout resolves ASCII glyphs with one load and
+searches only the left glyph's pairs instead of the whole table; pairs for
+codepoints without glyphs stay in the full table so results are unchanged.
+Manually assembled fonts, which do not set `RG_TEXT_LOOKUP_INDEXED`, are
+untouched. Center and right alignment emit each line relative to the pen and
+place it when the line ends, so glyphs are resolved once instead of two or
+three times; an automatic alignment width defers placement to the end of the
+text.
+
+Unlike the earlier dense-glyph and kerning-rejection experiment, which traded
+ASCII gains for sparse Unicode regressions, every workload improved, including
+the sparse Unicode pair hits and misses:
+
+| Workload (median of three run medians) | Baseline | Current | Change |
+| --- | ---: | ---: | ---: |
+| Dense ASCII, 16 bytes | 0.726 us | 0.410 us | 43% less |
+| Dense ASCII, 2,000 bytes | 91.99 us | 48.98 us | 47% less |
+| Dense ASCII, multiline center | 217.83 us | 53.88 us | 75% less |
+| Dense ASCII, multiline right | 211.23 us | 48.10 us | 77% less |
+| Dense ASCII, no kerning | 42.27 us | 15.25 us | 64% less |
+| Sparse Unicode, ASCII pair misses | 123.34 us | 14.74 us | 88% less |
+| Sparse Unicode, pair hits | 57.79 us | 31.66 us | 45% less |
+| Sparse Unicode, pair misses | 62.98 us | 21.70 us | 66% less |
+| Baked Inter, 16 ASCII bytes | 0.620 us | 0.236 us | 62% less |
+| Baked Inter, 2,000 ASCII bytes | 75.83 us | 19.63 us | 74% less |
+
+Capacity-one results improved by 25% to 71%; the aligned capacity-one cases
+still scan the text for its widest line, as before, but in one pass. The
+[GCC report](../benchmarks/results/linux_i3_1005g1_gcc_indexed_lookup.txt)
+holds the normalized commands, verification logs, and all six run logs.
+
+The GCC strict C99 tests with assertions on and off, the ASan/UBSan suite, and
+the packing contract tests passed on this host. Clang was not installed on the
+host at the time, so the Clang comparison and the libFuzzer campaigns were not
+repeated; hosted CI runs them. `RgTextGlyph` gained two trailing fields
+(`kerning_first`, `kerning_count`), so positional initializers of that struct
+need two more values; zero-initialized and designated initializers are
+unaffected.
+
 ## Validation on this host
 
 The final Clang release gate passed: strict C99 checks with assertions on/off,

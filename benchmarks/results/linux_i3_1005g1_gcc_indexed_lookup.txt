@@ -1,0 +1,373 @@
+rg_text Linux x86-64 paired measurement: indexed lookups and single-pass alignment, 2026-10-22
+Baseline runtime: revision 83991b4ad372ccd8bbe4e9d9d9fade67b8655ad1 (benchmark harness and rg_core identical for both sides).
+Compiler: gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0; flags: -std=c99 -pedantic-errors -O2 -Wall -Wextra -Werror; no LTO, fast-math or native ISA target.
+Host: Intel Core i3-1005G1 (2 cores / 4 threads), Linux 6.8.0-60; pinned to logical CPU 0; power settings unchanged.
+rg_core revision: c926c1d71e5c8349ca2b50428cfe4ca8ab43143c. Baked font: Inter Medium 16 px (sha256 e31e494cee22d7a7b03355d70862e6631993a55dc75f23b3e0aa896bb1369e83).
+Three paired runs with alternating order; each binary reports seven warmed samples per case.
+Layout checksums matched between baseline and current: True.
+
+===== summary: median of three run medians, ns per call =====
+font / workload                                       cap     baseline      current   change
+dense ASCII / ASCII hits short                       2000        725.9        410.4   +43.5%
+dense ASCII / ASCII hits short                          1         29.0         18.7   +35.8%
+dense ASCII / ASCII hits full                        2000      91993.8      48984.9   +46.8%
+dense ASCII / ASCII hits full                           1         28.5         19.4   +32.1%
+dense ASCII / multiline center                       2000     217834.4      53884.2   +75.3%
+dense ASCII / multiline center                          1      59611.0      30432.7   +48.9%
+dense ASCII / multiline right                        2000     211229.0      48096.5   +77.2%
+dense ASCII / multiline right                           1      72745.9      21063.8   +71.0%
+dense ASCII unkerned / ASCII no kerning              2000      42265.4      15254.4   +63.9%
+dense ASCII unkerned / ASCII no kerning                 1         27.6         11.2   +59.5%
+sparse Unicode / ASCII pair misses                   2000     123338.0      14736.0   +88.1%
+sparse Unicode / ASCII pair misses                      1         30.3         10.7   +64.8%
+sparse Unicode / Unicode pair hits                   2000      57788.5      31658.1   +45.2%
+sparse Unicode / Unicode pair hits                      1         20.2         13.2   +34.7%
+sparse Unicode / Unicode pair misses                 2000      62981.9      21700.1   +65.5%
+sparse Unicode / Unicode pair misses                    1         33.7         25.2   +25.3%
+<baked.font> / asset ASCII short                     2000        619.6        235.7   +62.0%
+<baked.font> / asset ASCII short                        1         27.3         12.7   +53.5%
+<baked.font> / asset ASCII full                      2000      75834.6      19626.0   +74.1%
+<baked.font> / asset ASCII full                         1         28.6         11.2   +60.8%
+
+===== gcc-layout-baseline-compile.log =====
+$ /usr/bin/gcc -std=c99 -pedantic-errors -O2 -Wall -Wextra -Werror -I <rg_core>/src <baseline>/benchmarks/bench_text.c -lm -o <baseline>/gcc-layout
+
+===== gcc-layout-current-compile.log =====
+$ /usr/bin/gcc -std=c99 -pedantic-errors -O2 -Wall -Wextra -Werror -I <rg_core>/src <current>/benchmarks/bench_text.c -lm -o <current>/gcc-layout
+
+===== gcc-layout-baseline-verify.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-layout --verify-only <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== gcc-layout-current-verify.log =====
+$ /usr/bin/taskset -c 0 <current>/gcc-layout --verify-only <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== gcc-layout-baseline-run-1.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-layout <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=725.875 ns/call min=717.605 max=751.003 (32768 calls/trial)
+  capacity=1 median=29.029 ns/call min=27.377 max=33.234 (1048576 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=91993.844 ns/call min=89310.535 max=113249.328 (256 calls/trial)
+  capacity=1 median=28.770 ns/call min=28.144 max=29.401 (1048576 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=250304.719 ns/call min=231709.039 max=295840.453 (128 calls/trial)
+  capacity=1 median=76688.135 ns/call min=74003.717 max=77495.834 (512 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=245227.602 ns/call min=217188.266 max=254359.422 (128 calls/trial)
+  capacity=1 median=72745.914 ns/call min=67952.607 max=76442.408 (512 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=42265.410 ns/call min=40376.967 max=44296.992 (512 calls/trial)
+  capacity=1 median=28.823 ns/call min=17.992 max=30.591 (1048576 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=127001.246 ns/call min=102912.328 max=133047.262 (256 calls/trial)
+  capacity=1 median=32.177 ns/call min=30.924 max=42.738 (1048576 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=57788.496 ns/call min=53954.838 max=60249.672 (512 calls/trial)
+  capacity=1 median=20.211 ns/call min=12.867 max=29.462 (2097152 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=62981.914 ns/call min=57156.182 max=74278.678 (512 calls/trial)
+  capacity=1 median=33.685 ns/call min=29.729 max=46.547 (1048576 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=622.118 ns/call min=571.406 max=1303.609 (65536 calls/trial)
+  capacity=1 median=27.474 ns/call min=19.717 max=31.656 (1048576 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=81874.191 ns/call min=77191.262 max=83966.607 (512 calls/trial)
+  capacity=1 median=30.434 ns/call min=26.371 max=39.912 (1048576 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== gcc-layout-baseline-run-2.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-layout <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=1121.920 ns/call min=669.729 max=1600.406 (32768 calls/trial)
+  capacity=1 median=30.416 ns/call min=18.164 max=42.328 (1048576 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=94597.426 ns/call min=85355.934 max=103795.148 (256 calls/trial)
+  capacity=1 median=28.517 ns/call min=22.655 max=30.406 (1048576 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=217834.414 ns/call min=163212.148 max=274816.750 (128 calls/trial)
+  capacity=1 median=57046.965 ns/call min=53118.801 max=65773.445 (512 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=211229.008 ns/call min=176216.656 max=260392.586 (128 calls/trial)
+  capacity=1 median=75933.943 ns/call min=71779.404 max=81477.723 (512 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=31583.279 ns/call min=29559.217 max=42380.602 (512 calls/trial)
+  capacity=1 median=19.812 ns/call min=18.613 max=26.867 (1048576 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=114975.641 ns/call min=99451.887 max=122884.613 (256 calls/trial)
+  capacity=1 median=30.334 ns/call min=29.479 max=32.434 (1048576 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=47316.582 ns/call min=45037.545 max=52967.301 (512 calls/trial)
+  capacity=1 median=20.685 ns/call min=18.045 max=23.966 (1048576 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=52598.330 ns/call min=48413.146 max=61531.863 (512 calls/trial)
+  capacity=1 median=29.809 ns/call min=26.265 max=33.913 (1048576 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=481.520 ns/call min=445.402 max=543.697 (65536 calls/trial)
+  capacity=1 median=23.545 ns/call min=19.027 max=26.272 (2097152 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=53675.779 ns/call min=51789.363 max=64933.906 (512 calls/trial)
+  capacity=1 median=20.444 ns/call min=19.316 max=21.670 (2097152 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== gcc-layout-baseline-run-3.log =====
+$ /usr/bin/taskset -c 0 <baseline>/gcc-layout <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=575.405 ns/call min=537.735 max=599.230 (65536 calls/trial)
+  capacity=1 median=19.554 ns/call min=18.210 max=23.057 (1048576 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=71494.283 ns/call min=70002.084 max=77483.195 (512 calls/trial)
+  capacity=1 median=19.801 ns/call min=17.776 max=24.562 (1048576 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=184029.969 ns/call min=163528.234 max=310573.547 (128 calls/trial)
+  capacity=1 median=59610.984 ns/call min=55624.707 max=67181.342 (512 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=203099.656 ns/call min=170748.039 max=226838.203 (128 calls/trial)
+  capacity=1 median=72020.729 ns/call min=69981.020 max=74942.354 (512 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=42698.719 ns/call min=41537.920 max=43752.727 (512 calls/trial)
+  capacity=1 median=27.550 ns/call min=27.018 max=28.411 (1048576 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=123337.996 ns/call min=120312.430 max=132060.875 (256 calls/trial)
+  capacity=1 median=29.561 ns/call min=28.702 max=30.470 (1048576 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=59042.570 ns/call min=56522.436 max=59785.322 (512 calls/trial)
+  capacity=1 median=18.983 ns/call min=18.510 max=19.191 (2097152 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=63790.721 ns/call min=60637.498 max=70707.627 (512 calls/trial)
+  capacity=1 median=33.874 ns/call min=24.603 max=37.799 (1048576 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=619.603 ns/call min=478.351 max=638.118 (65536 calls/trial)
+  capacity=1 median=27.268 ns/call min=20.422 max=30.735 (1048576 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=75834.641 ns/call min=58016.438 max=95735.416 (512 calls/trial)
+  capacity=1 median=28.558 ns/call min=21.422 max=30.833 (1048576 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== gcc-layout-current-run-1.log =====
+$ /usr/bin/taskset -c 0 <current>/gcc-layout <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=410.430 ns/call min=401.256 max=437.743 (65536 calls/trial)
+  capacity=1 median=22.883 ns/call min=17.936 max=29.503 (1048576 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=61923.332 ns/call min=53192.090 max=84870.627 (512 calls/trial)
+  capacity=1 median=41.702 ns/call min=21.363 max=54.324 (1048576 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=93057.688 ns/call min=48648.598 max=118506.133 (256 calls/trial)
+  capacity=1 median=31538.109 ns/call min=28774.680 max=256881.488 (256 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=51378.186 ns/call min=43144.373 max=60209.031 (512 calls/trial)
+  capacity=1 median=29266.654 ns/call min=27549.074 max=29653.268 (512 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=24800.136 ns/call min=21422.393 max=29380.907 (1024 calls/trial)
+  capacity=1 median=21.131 ns/call min=19.378 max=30.926 (2097152 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=25254.711 ns/call min=24504.421 max=26589.415 (1024 calls/trial)
+  capacity=1 median=18.036 ns/call min=17.056 max=19.703 (2097152 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=50194.615 ns/call min=43946.758 max=84322.605 (512 calls/trial)
+  capacity=1 median=25.401 ns/call min=20.475 max=33.683 (1048576 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=30063.579 ns/call min=28394.887 max=34017.962 (1024 calls/trial)
+  capacity=1 median=33.114 ns/call min=31.338 max=36.564 (1048576 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=269.233 ns/call min=246.750 max=291.123 (131072 calls/trial)
+  capacity=1 median=17.950 ns/call min=17.188 max=20.043 (2097152 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=30124.671 ns/call min=27089.522 max=34122.912 (1024 calls/trial)
+  capacity=1 median=21.871 ns/call min=19.768 max=32.038 (2097152 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== gcc-layout-current-run-2.log =====
+$ /usr/bin/taskset -c 0 <current>/gcc-layout <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=361.630 ns/call min=345.678 max=381.561 (65536 calls/trial)
+  capacity=1 median=18.651 ns/call min=16.675 max=28.579 (1048576 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=48984.926 ns/call min=46294.088 max=55390.350 (512 calls/trial)
+  capacity=1 median=19.370 ns/call min=18.801 max=21.622 (2097152 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=53884.188 ns/call min=51444.596 max=61281.166 (512 calls/trial)
+  capacity=1 median=30432.730 ns/call min=27911.437 max=35643.121 (1024 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=48096.549 ns/call min=30628.506 max=55458.996 (512 calls/trial)
+  capacity=1 median=20714.219 ns/call min=18848.085 max=24168.700 (1024 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=15254.394 ns/call min=13401.705 max=16313.056 (2048 calls/trial)
+  capacity=1 median=11.167 ns/call min=9.399 max=13.091 (2097152 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=13956.907 ns/call min=13587.120 max=15336.301 (2048 calls/trial)
+  capacity=1 median=10.268 ns/call min=9.691 max=12.875 (2097152 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=31658.109 ns/call min=29582.897 max=33918.883 (1024 calls/trial)
+  capacity=1 median=11.384 ns/call min=10.886 max=14.781 (2097152 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=21451.601 ns/call min=20306.520 max=25327.292 (1024 calls/trial)
+  capacity=1 median=25.176 ns/call min=24.422 max=35.901 (1048576 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=235.745 ns/call min=215.170 max=267.901 (131072 calls/trial)
+  capacity=1 median=12.670 ns/call min=9.563 max=16.011 (2097152 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=19625.989 ns/call min=18083.941 max=24154.822 (2048 calls/trial)
+  capacity=1 median=11.189 ns/call min=9.588 max=14.359 (2097152 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
+===== gcc-layout-current-run-3.log =====
+$ /usr/bin/taskset -c 0 <current>/gcc-layout <baked.font>
+
+Compiler: GCC 13.3.0
+rg_text layout benchmark; indexed output checked against linear lookup
+Seven warmed trials; calibrated batches; checks outside timing; compile optimized without LTO.
+
+dense ASCII: 95 glyphs, 9025 pairs
+dense ASCII / ASCII hits short: 16 text bytes, 13 visible quads
+  capacity=2000 median=698.233 ns/call min=393.336 max=1792.463 (65536 calls/trial)
+  capacity=1 median=14.401 ns/call min=11.202 max=19.204 (2097152 calls/trial)
+dense ASCII / ASCII hits full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=31688.522 ns/call min=29371.071 max=42148.768 (1024 calls/trial)
+  capacity=1 median=11.135 ns/call min=9.373 max=15.931 (2097152 calls/trial)
+dense ASCII / multiline center: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=30783.547 ns/call min=29910.384 max=37610.639 (1024 calls/trial)
+  capacity=1 median=21182.561 ns/call min=19384.871 max=23090.794 (1024 calls/trial)
+dense ASCII / multiline right: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=32510.699 ns/call min=31040.807 max=39054.784 (1024 calls/trial)
+  capacity=1 median=21063.781 ns/call min=19024.231 max=22854.821 (1024 calls/trial)
+
+dense ASCII unkerned: 95 glyphs, 0 pairs
+dense ASCII unkerned / ASCII no kerning: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=15137.165 ns/call min=14149.984 max=17123.230 (2048 calls/trial)
+  capacity=1 median=10.505 ns/call min=9.909 max=12.294 (2097152 calls/trial)
+
+sparse Unicode: 512 glyphs, 65536 pairs
+sparse Unicode / ASCII pair misses: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=14736.049 ns/call min=13067.047 max=18256.799 (2048 calls/trial)
+  capacity=1 median=10.667 ns/call min=9.566 max=14.804 (2097152 calls/trial)
+sparse Unicode / Unicode pair hits: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=31349.210 ns/call min=30596.671 max=33777.266 (1024 calls/trial)
+  capacity=1 median=13.191 ns/call min=11.156 max=17.205 (2097152 calls/trial)
+sparse Unicode / Unicode pair misses: 2000 text bytes, 1000 visible quads
+  capacity=2000 median=21700.079 ns/call min=20495.004 max=23448.457 (1024 calls/trial)
+  capacity=1 median=24.799 ns/call min=24.039 max=28.140 (1048576 calls/trial)
+
+<baked.font>: 95 glyphs, 616 pairs
+<baked.font> / asset ASCII short: 16 text bytes, 13 visible quads
+  capacity=2000 median=156.832 ns/call min=147.312 max=196.730 (131072 calls/trial)
+  capacity=1 median=10.715 ns/call min=9.978 max=13.496 (2097152 calls/trial)
+<baked.font> / asset ASCII full: 2000 text bytes, 1656 visible quads
+  capacity=2000 median=18502.554 ns/call min=17417.940 max=21617.203 (2048 calls/trial)
+  capacity=1 median=10.757 ns/call min=10.373 max=11.413 (4194304 calls/trial)
+
+Layout and measurement checks passed. Checksum: 17426461922453165452
+
