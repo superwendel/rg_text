@@ -18,6 +18,10 @@ left-to-right bitmap text, not a Unicode shaping engine.
   joining, Indic conjuncts, bidi runs, font fallback across a face set) over the
   vendored `third_party/kb/kb_text_shape.h`; positions in pixels, clusters as
   source byte offsets. The bitmap path in `rg_text.h` is untouched.
+- `src/rg_text_raster.h` — opt-in glyph rasterization into an R8 shelf-packed
+  atlas keyed by (face, glyph, size, subpixel quarter), with a dirty rectangle
+  and generation for renderers; backends: vendored `third_party/stb/stb_truetype.h`
+  (no link step) or FreeType 2 with light hinting.
 - `tools/rg_text_bake.c` — optional offline `.ttf`/`.otf` converter using
   FreeType and HarfBuzz.
 - `shaders/` — HLSL source for the SDL3 GPU path. Generated backend binaries

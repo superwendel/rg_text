@@ -22,6 +22,7 @@ if /I "%TARGET%"=="test_ci" goto test_ci
 if /I "%TARGET%"=="test_release" goto test_release
 if /I "%TARGET%"=="test_text" goto test_text
 if /I "%TARGET%"=="test_text_shape" goto test_text_shape
+if /I "%TARGET%"=="test_text_raster" goto test_text_raster
 if /I "%TARGET%"=="test_gpu" goto test_gpu
 if /I "%TARGET%"=="test_gpu_compile" goto test_gpu_compile
 if /I "%TARGET%"=="test_gpu_pack" goto test_gpu_pack
@@ -154,6 +155,9 @@ if not errorlevel 0 exit /b 1
 call "%~f0" test_text_shape
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
+call "%~f0" test_text_raster
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
 echo rg_text renderer-neutral tests passed. GPU checks were not run; use test_ci or test_release.
 exit /b 0
 
@@ -237,6 +241,43 @@ cl /nologo /std:c11 /W4 /WX /O2 /utf-8 /D_CRT_SECURE_NO_WARNINGS /I "%RG_CORE_DI
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 test_text_shape.exe
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+exit /b 0
+
+:test_text_raster
+call :ensure_compiler
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call :validate_core
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+
+echo Building rg_text_raster tests, stb_truetype backend...
+cl /nologo /std:c11 /W4 /WX /O2 /utf-8 /D_CRT_SECURE_NO_WARNINGS /I "%RG_CORE_DIR%\src" /I src tests\test_text_raster.c /Fe:test_text_raster.exe
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+test_text_raster.exe
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+
+rem FreeType backend when the Windows binaries are present (C:\libs\freetype-windows-binaries-* or FREETYPE_DIR).
+if not defined FREETYPE_DIR for /d %%i in ("C:\libs\freetype-windows-binaries-*") do set "FREETYPE_DIR=%%i"
+if not defined FREETYPE_DIR (
+	echo FreeType not found; the FreeType backend test was skipped. Set FREETYPE_DIR to run it.
+	exit /b 0
+)
+set "FT_STATIC_LIB=%FREETYPE_DIR%\releasestatic\vs2015-2022\win64\freetype.lib"
+if not exist "%FT_STATIC_LIB%" set "FT_STATIC_LIB=%FREETYPE_DIR%\lib\freetype.lib"
+if not exist "%FT_STATIC_LIB%" (
+	echo FreeType library not found under %FREETYPE_DIR%; the FreeType backend test was skipped.
+	exit /b 0
+)
+echo Building rg_text_raster tests, FreeType backend...
+cl /nologo /std:c11 /W4 /WX /O2 /utf-8 /D_CRT_SECURE_NO_WARNINGS /DRG_TEXT_RASTER_BACKEND=2 /I "%RG_CORE_DIR%\src" /I src /external:W0 /external:I"%FREETYPE_DIR%\include" tests\test_text_raster.c /Fe:test_text_raster_ft.exe /link "%FT_STATIC_LIB%"
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+test_text_raster_ft.exe
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 exit /b 0
