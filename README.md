@@ -14,6 +14,10 @@ left-to-right bitmap text, not a Unicode shaping engine.
   measurement, alignment, and quad generation.
 - `src/rg_text_gpu.h` — SDL3 GPU atlas upload, batching, upload-ring staging,
   and indexed drawing.
+- `src/rg_text_shape.h` — opt-in Unicode shaping (OpenType features, Arabic
+  joining, Indic conjuncts, bidi runs, font fallback across a face set) over the
+  vendored `third_party/kb/kb_text_shape.h`; positions in pixels, clusters as
+  source byte offsets. The bitmap path in `rg_text.h` is untouched.
 - `tools/rg_text_bake.c` — optional offline `.ttf`/`.otf` converter using
   FreeType and HarfBuzz.
 - `shaders/` — HLSL source for the SDL3 GPU path. Generated backend binaries

@@ -21,6 +21,7 @@ if /I "%TARGET%"=="test" goto test
 if /I "%TARGET%"=="test_ci" goto test_ci
 if /I "%TARGET%"=="test_release" goto test_release
 if /I "%TARGET%"=="test_text" goto test_text
+if /I "%TARGET%"=="test_text_shape" goto test_text_shape
 if /I "%TARGET%"=="test_gpu" goto test_gpu
 if /I "%TARGET%"=="test_gpu_compile" goto test_gpu_compile
 if /I "%TARGET%"=="test_gpu_pack" goto test_gpu_pack
@@ -150,6 +151,9 @@ exit /b 0
 call "%~f0" test_text
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
+call "%~f0" test_text_shape
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
 echo rg_text renderer-neutral tests passed. GPU checks were not run; use test_ci or test_release.
 exit /b 0
 
@@ -216,6 +220,23 @@ cl /nologo /std:c11 /W4 /WX /O2 /I "%RG_CORE_DIR%\src" tests\test_text.c /Fe:tes
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 test_text.exe
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+exit /b 0
+
+:test_text_shape
+call :ensure_compiler
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call :validate_core
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+
+echo Building rg_text_shape tests (kb over the Windows system fonts; skips when they are absent)...
+cl /nologo /std:c11 /W4 /WX /O2 /utf-8 /D_CRT_SECURE_NO_WARNINGS /I "%RG_CORE_DIR%\src" /I src tests\test_text_shape.c /Fe:test_text_shape.exe
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+test_text_shape.exe
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 exit /b 0

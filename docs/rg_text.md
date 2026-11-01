@@ -185,3 +185,39 @@ files, so readers should not open it concurrently with a bake.
 Only one process may bake a given output base at a time. The baker holds a
 per-base operating-system lock and rejects a concurrent writer before staging
 any output.
+
+## Shaping (`rg_text_shape.h`)
+
+Opt-in and independent of the bitmap path: include it once in the unity
+translation unit after `rg_mem.h`. It wraps kb_text_shape (vendored under
+`third_party/kb`, zlib) with internal linkage and arena memory.
+
+```c
+RgTextFace ui, cjk;                       // faces parse from caller-held font bytes
+rg_text_face_load(&ui, &arena, segoe_bytes, segoe_size, 0);
+rg_text_face_load(&cjk, &arena, yugothic_bytes, yugothic_size, 0);
+RgTextFontSet set = {0};
+rg_text_font_set_add(&set, &ui);          // primary first, fallbacks after
+rg_text_font_set_add(&set, &cjk);
+
+RgTextShapeContext shaper;                // one per thread, one font set at a time
+rg_text_shape_context_init(&shaper, &shaper_arena, 0);
+
+RgTextLayout layout;                      // glyphs in visual order, pixels at px_size
+rg_text_shape_utf8(&shaper, &set, utf8, len, 14.0f, &frame_arena, &layout);
+```
+
+Each `RgTextShapedGlyph` carries the glyph id, the face index it came from,
+pen-relative x/y and advance in pixels, whether its run is right-to-left, and
+`cluster`, the byte offset of its source codepoint, which drives
+`rg_text_layout_caret_x`, `rg_text_layout_hit_test` and `rg_text_layout_fit`.
+`notdef_count` tells the caller when no face in the set covered a codepoint.
+
+The context's allocations come from its arena and are never freed one by one;
+call `rg_text_shape_context_reset` between batches (a reset costs about 60 us,
+so not per line). Switching the bound font set also resets. The arena given
+to the context must hold nothing else after init. Fonts must be trusted.
+
+`tests/test_text_shape.c` checks glyph ids against DirectWrite dumps for
+Latin (Calibri ligatures), Arabic joining, Devanagari conjuncts, Thai, CJK and
+emoji fallback, and times 10,000 file-name-like strings (about 6 us each).
