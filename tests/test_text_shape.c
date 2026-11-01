@@ -219,6 +219,8 @@ static void test_copy_out_and_queries(void)
 		f32 lh = rg_text_face_line_height(&segoe, 14.0f);
 		f32 asc = rg_text_face_ascent(&segoe, 14.0f);
 		TEST_ASSERT(lh > 14.0f && lh < 24.0f && asc > 9.0f && asc < 16.0f, "line height and ascent in range");
+		/* Segoe UI does not set USE_TYPO_METRICS: hhea 2210/-514/0 over 2048 units, as DirectWrite uses. */
+		TEST_ASSERT(segoe.ascent == 2210 && segoe.descent == -514 && segoe.line_gap == 0, "hhea metrics like Windows");
 	}
 	TEST_PASS();
 }

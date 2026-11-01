@@ -40,6 +40,8 @@
 // NOTES:
 //   - All functions have internal linkage and work in unity builds.
 //   - Positions are in pixels at the requested size; kb works in font units.
+//   - Line metrics follow Windows: hhea unless OS/2 USE_TYPO_METRICS is set
+//     (Segoe UI at 14 px: 18.6 px line height, as DirectWrite lays it out).
 //   - A shape context is single-threaded; its arena-backed allocations are
 //     never freed individually (kb's free ops are no-ops), so size the arena
 //     for the longest line and reset the context's arena between frames with
@@ -181,6 +183,58 @@ static void rg_text_shape_allocator_fn(void* data, kbts_allocator_op* op)
 	/* FREE: arena memory is reclaimed by rg_text_shape_context_reset. */
 }
 
+/* Big-endian reads for the sfnt directory walk below. */
+RGINLINE u32 rg_text_sfnt_u32(const u8* p) { return ((u32)p[0] << 24) | ((u32)p[1] << 16) | ((u32)p[2] << 8) | p[3]; }
+RGINLINE u16 rg_text_sfnt_u16(const u8* p) { return (u16)(((u16)p[0] << 8) | p[1]); }
+
+/* Locate a table of face `index` in a TrueType/OpenType file or collection.
+ * Returns the table bytes and length, or NULL when absent or out of bounds. */
+RGINLINE const u8* rg_text_sfnt_table(const void* data, size_t size, int index, const char* tag, u32* out_length)
+{
+	const u8* bytes = (const u8*)data;
+	size_t offset = 0;
+	u32 i, count;
+	if (!bytes || size < 12) return NULL;
+	if (memcmp(bytes, "ttcf", 4) == 0)
+	{
+		u32 fonts = rg_text_sfnt_u32(bytes + 8);
+		if (index < 0 || (u32)index >= fonts || size < 12u + 4u * fonts) return NULL;
+		offset = rg_text_sfnt_u32(bytes + 12 + 4 * (u32)index);
+		if (offset + 12 > size) return NULL;
+	}
+	count = rg_text_sfnt_u16(bytes + offset + 4);
+	if (offset + 12 + 16u * count > size) return NULL;
+	for (i = 0; i < count; i++)
+	{
+		const u8* rec = bytes + offset + 12 + 16u * i;
+		if (memcmp(rec, tag, 4) == 0)
+		{
+			u32 table_offset = rg_text_sfnt_u32(rec + 8);
+			u32 length = rg_text_sfnt_u32(rec + 12);
+			if (table_offset > size || length > size - table_offset) return NULL;
+			*out_length = length;
+			return bytes + table_offset;
+		}
+	}
+	return NULL;
+}
+
+/* Windows (DirectWrite, GDI) lays text out with the hhea ascender/descender/gap
+ * unless OS/2 fsSelection sets USE_TYPO_METRICS; kb reports the OS/2 typo
+ * metrics first. Mirror Windows so line boxes match what the platform draws. */
+RGINLINE void rg_text_face_windows_metrics(RgTextFace* face, const void* data, size_t size, int index)
+{
+	u32 length = 0;
+	const u8* os2 = rg_text_sfnt_table(data, size, index, "OS/2", &length);
+	const u8* hhea;
+	if (os2 && length >= 64 && (rg_text_sfnt_u16(os2 + 62) & 0x80u)) return; /* fsSelection.USE_TYPO_METRICS */
+	hhea = rg_text_sfnt_table(data, size, index, "hhea", &length);
+	if (!hhea || length < 10) return;
+	face->ascent = (i16)rg_text_sfnt_u16(hhea + 4);
+	face->descent = (i16)rg_text_sfnt_u16(hhea + 6);
+	face->line_gap = (i16)rg_text_sfnt_u16(hhea + 8);
+}
+
 RGINLINE int rg_text_face_load(RgTextFace* face, RgArena* arena, const void* data, size_t size, int index)
 {
 	kbts_load_font_state state;
@@ -218,6 +272,7 @@ RGINLINE int rg_text_face_load(RgTextFace* face, RgArena* arena, const void* dat
 		face->line_gap = info.LineGap;
 		face->cap_height = info.CapitalHeight;
 	}
+	rg_text_face_windows_metrics(face, data, size, index);
 	face->valid = 1;
 	return 1;
 }
