@@ -123,6 +123,46 @@ static void test_arabic(void)
 	TEST_ASSERT(joined.glyphs[0].glyph == 3622 && joined.glyphs[1].glyph == 3623 && joined.glyphs[2].glyph == 2251,
 	            "joined forms match DirectWrite in visual order (3622 3623 2251)");
 	/* Visual order is left to right, so clusters of an RTL word decrease. */
+	/* Caret: logical start of an RTL word is its right edge, logical end its left edge. */
+	TEST_ASSERT(rg_text_layout_caret_x(&joined, 0) == joined.width && rg_text_layout_caret_x(&joined, 6) == 0.0f,
+	            "RTL caret endpoints");
+	TEST_ASSERT(rg_text_layout_caret_x(&joined, 2) == joined.glyphs[2].x &&
+	                rg_text_layout_caret_x(&joined, 4) == joined.glyphs[1].x,
+	            "RTL caret between letters sits left of the earlier letter");
+	/* Hit test: the left edge is the logical end, the right edge the start, and
+	 * a probe just inside each caret position returns that offset. */
+	TEST_ASSERT(rg_text_layout_hit_test(&joined, 0.5f) == 6 && rg_text_layout_hit_test(&joined, -5.0f) == 6,
+	            "left edge hits the logical end");
+	TEST_ASSERT(rg_text_layout_hit_test(&joined, joined.width - 0.5f) == 0 &&
+	                rg_text_layout_hit_test(&joined, joined.width + 5.0f) == 0,
+	            "right edge hits the logical start");
+	for (u32 off = 0; off < 6; off += 2)
+		TEST_ASSERT(rg_text_layout_hit_test(&joined, rg_text_layout_caret_x(&joined, off) - 0.5f) == off,
+		            "RTL hit test returns the caret offset");
+	TEST_ASSERT(rg_text_layout_hit_test(&joined, rg_text_layout_caret_x(&joined, 6) + 0.5f) == 6,
+	            "RTL hit test at the logical end");
+	/* Mixed: "ab" then the Arabic word. The caret after 'b' and the caret
+	 * before the first Arabic letter coincide at the run boundary. */
+	{
+		RgTextLayout mixed;
+		f32 after_b;
+		u32 k, arabic_right = 0;
+		TEST_ASSERT(shape("ab\xD8\xA8\xD8\xA8\xD8\xA8", 14.0f, &mixed), "shape mixed");
+		TEST_ASSERT(mixed.count == 5 && mixed.has_rtl && !mixed.glyphs[0].rtl && mixed.glyphs[4].rtl, "mixed runs");
+		after_b = mixed.glyphs[1].x + mixed.glyphs[1].advance;
+		for (k = 0; k < 5; k++)
+			if (mixed.glyphs[k].cluster == 2) arabic_right = k;
+		TEST_ASSERT(rg_text_layout_caret_x(&mixed, 0) == 0.0f && rg_text_layout_caret_x(&mixed, 2) == after_b,
+		            "LTR carets in the mixed line");
+		TEST_ASSERT(rg_text_layout_caret_x(&mixed, 8) == mixed.glyphs[2].x &&
+		                mixed.glyphs[2].x == after_b,
+		            "the Arabic word's logical end is its left edge, at the run boundary");
+		TEST_ASSERT(rg_text_layout_hit_test(&mixed, mixed.width - 0.5f) == 2 &&
+		                mixed.glyphs[arabic_right].x + mixed.glyphs[arabic_right].advance == mixed.width,
+		            "the right edge of the line is the first Arabic letter");
+		TEST_ASSERT(rg_text_layout_hit_test(&mixed, 0.5f) == 0 && rg_text_layout_hit_test(&mixed, after_b - 0.5f) == 2,
+		            "hits inside the Latin run");
+	}
 	TEST_ASSERT(joined.glyphs[0].cluster == 4 && joined.glyphs[1].cluster == 2 && joined.glyphs[2].cluster == 0,
 	            "RTL clusters run backwards in visual order");
 	/* Mixed line: Latin then Arabic then Latin keeps Latin LTR and the word RTL. */

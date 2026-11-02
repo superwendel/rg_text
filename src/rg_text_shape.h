@@ -153,10 +153,13 @@ RGINLINE void rg_text_shape_context_reset(RgTextShapeContext* sc);
 RGINLINE int rg_text_shape_utf8(RgTextShapeContext* sc, const RgTextFontSet* set, const char* utf8, size_t len, f32 px_size,
                                 RgArena* out, RgTextLayout* layout);
 
-/** Caret x for a byte offset into the source (0..source_len), in pixels:
- *  the leading edge of the first glyph whose cluster >= offset, else the end. */
+/** Caret x for a byte offset into the source (0..source_len), in pixels: the
+ *  trailing edge of the glyph owning the last byte before the offset (left of
+ *  an RTL glyph, right of an LTR one), or the leading edge of the glyph at
+ *  offset 0. Offsets inside a ligature cluster land after the cluster. */
 RGINLINE f32 rg_text_layout_caret_x(const RgTextLayout* layout, u32 byte_offset);
-/** Source byte offset nearest to pixel x (for mouse hit testing). */
+/** Source byte offset whose caret is nearest to pixel x (mouse hit testing):
+ *  the near edge of the glyph under x, mapped through its direction. */
 RGINLINE u32 rg_text_layout_hit_test(const RgTextLayout* layout, f32 x);
 /** Number of leading glyphs whose right edge stays within `max_width`. */
 RGINLINE u32 rg_text_layout_fit(const RgTextLayout* layout, f32 max_width);
@@ -389,41 +392,54 @@ RGINLINE int rg_text_shape_utf8(RgTextShapeContext* sc, const RgTextFontSet* set
 	return 1;
 }
 
+/* Byte offset just past the cluster that starts at `cluster`: the smallest
+ * cluster above it in the layout, else the source length. Glyphs are in visual
+ * order, so this is a scan, not an index; layouts are line-sized. */
+RGINLINE u32 rg_text_layout_cluster_end(const RgTextLayout* layout, u32 cluster)
+{
+	u32 i, end = layout->source_len;
+	for (i = 0; i < layout->count; i++)
+	{
+		u32 c = layout->glyphs[i].cluster;
+		if (c > cluster && c < end) end = c;
+	}
+	return end;
+}
+
 RGINLINE f32 rg_text_layout_caret_x(const RgTextLayout* layout, u32 byte_offset)
 {
+	const RgTextShapedGlyph* before = NULL; /* glyph with the largest cluster < offset */
+	const RgTextShapedGlyph* at = NULL;     /* glyph starting exactly at the offset */
 	u32 i;
-	if (!layout->count) return 0.0f;
-	if (!layout->has_rtl)
-	{
-		for (i = 0; i < layout->count; i++)
-			if (layout->glyphs[i].cluster >= byte_offset) return layout->glyphs[i].x;
-		return layout->width;
-	}
-	/* Mixed or RTL: the glyph owning the offset; its leading edge is on the
-	 * right for RTL glyphs. */
 	for (i = 0; i < layout->count; i++)
 	{
 		const RgTextShapedGlyph* g = &layout->glyphs[i];
-		if (g->cluster == byte_offset) return g->rtl ? g->x + g->advance : g->x;
+		if (g->cluster == byte_offset) { if (!at) at = g; }
+		else if (g->cluster < byte_offset && (!before || g->cluster > before->cluster)) before = g;
 	}
-	return byte_offset >= layout->source_len ? layout->width : 0.0f;
+	if (before) return before->rtl ? before->x : before->x + before->advance; /* trailing edge */
+	if (at) return at->rtl ? at->x + at->advance : at->x;                      /* leading edge */
+	return 0.0f;
 }
 
 RGINLINE u32 rg_text_layout_hit_test(const RgTextLayout* layout, f32 x)
 {
+	const RgTextShapedGlyph* g = NULL;
 	u32 i;
+	if (!layout->count) return 0;
 	for (i = 0; i < layout->count; i++)
 	{
-		const RgTextShapedGlyph* g = &layout->glyphs[i];
-		f32 left = g->x, right = g->x + g->advance;
-		if (x < right)
-		{
-			int second_half = x >= (left + right) * 0.5f;
-			if (g->rtl) return second_half ? g->cluster : (i + 1 < layout->count ? layout->glyphs[i + 1].cluster : layout->source_len);
-			return second_half ? (i + 1 < layout->count ? layout->glyphs[i + 1].cluster : layout->source_len) : g->cluster;
-		}
+		g = &layout->glyphs[i];
+		if (x < g->x + g->advance) break;
 	}
-	return layout->source_len;
+	if (i == layout->count) g = &layout->glyphs[layout->count - 1]; /* past the end: its right edge */
+	{
+		/* The near edge: left or right of the glyph; the direction says which
+		 * byte offset that edge is. */
+		int right_edge = i == layout->count || x >= g->x + g->advance * 0.5f;
+		int start_edge = right_edge == g->rtl; /* RTL glyphs start on the right */
+		return start_edge ? g->cluster : rg_text_layout_cluster_end(layout, g->cluster);
+	}
 }
 
 RGINLINE u32 rg_text_layout_fit(const RgTextLayout* layout, f32 max_width)
