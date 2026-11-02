@@ -81,6 +81,7 @@ typedef struct RgTextRaster
 	FT_Library library;
 #endif
 	RgArena* scratch; // per-glyph bitmap staging; rewound after each rasterization
+	const u8* coverage_lut; // optional 256-entry remap applied as a glyph enters the atlas (NULL = identity)
 	int valid;
 } RgTextRaster;
 
@@ -448,7 +449,21 @@ RGINLINE const RgTextAtlasEntry* rg_text_atlas_get(RgTextAtlas* atlas, RgTextRas
 			}
 			{
 				u32 row;
-				for (row = 0; row < h; row++) memcpy(atlas->pixels + (size_t)(y + row) * atlas->width + x, bitmap + (size_t)row * stride, w);
+				if (raster->coverage_lut)
+				{
+					const u8* lut = raster->coverage_lut;
+					for (row = 0; row < h; row++)
+					{
+						u8* dst = atlas->pixels + (size_t)(y + row) * atlas->width + x;
+						const u8* src = bitmap + (size_t)row * stride;
+						u32 col;
+						for (col = 0; col < w; col++) dst[col] = lut[src[col]];
+					}
+				}
+				else
+				{
+					for (row = 0; row < h; row++) memcpy(atlas->pixels + (size_t)(y + row) * atlas->width + x, bitmap + (size_t)row * stride, w);
+				}
 			}
 			rg_text_atlas_mark_dirty(atlas, x, y, w, h);
 		}
