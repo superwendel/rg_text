@@ -110,6 +110,7 @@ typedef struct RgTextShapedGlyph
 	u16 glyph;    // glyph index in `face`; 0 is .notdef
 	u8 face;      // index into the font set
 	u8 rtl;       // the run this glyph came from is right-to-left
+	u8 grapheme;  // the source codepoint starts a Unicode grapheme cluster (kb's UAX #29 break)
 	f32 x;        // pen position + GPOS offset, pixels, relative to the layout origin
 	f32 y;        // positive up
 	f32 advance;  // pixels
@@ -117,9 +118,10 @@ typedef struct RgTextShapedGlyph
 	u32 cluster;  // byte offset of the source codepoint in the UTF-8 input
 } RgTextShapedGlyph;
 
-/* A caret group: the glyphs between two caret positions. kb clusters are per
- * codepoint, but a vowel sign reordered before its base or a zero-advance mark
- * is not a caret position; groups merge them with their base. */
+/* A caret group: the glyphs of one grapheme cluster, between two caret
+ * positions. kb clusters are per codepoint, but a vowel sign (reordered or
+ * spacing), a mark or a ZWJ continuation is not a caret position; groups merge
+ * them with their base using the grapheme break kb computes per codepoint. */
 typedef struct RgTextCaretGroup
 {
 	u32 start;   // first source byte of the group
@@ -174,8 +176,9 @@ RGINLINE int rg_text_shape_utf8(RgTextShapeContext* sc, const RgTextFontSet* set
 
 /** Caret groups in logical order (a zeroed iterator starts). Within each
  *  direction run, glyphs are walked in logical order and a new group starts at
- *  a positive-advance glyph whose cluster is above every cluster seen so far;
- *  anything else (reordered signs, marks) joins the current group. */
+ *  a glyph whose codepoint begins a grapheme cluster and whose cluster is above
+ *  every cluster seen so far; anything else (reordered or spacing vowel signs,
+ *  marks, further glyphs of the same codepoint) joins the current group. */
 RGINLINE int rg_text_layout_caret_group_next(const RgTextLayout* layout, RgTextCaretGroupIter* it, RgTextCaretGroup* out);
 /** Byte offset just past the group starting at `start`: the next group start,
  *  else the source length. */
@@ -408,7 +411,12 @@ RGINLINE int rg_text_shape_utf8(RgTextShapeContext* sc, const RgTextFontSet* set
 			o->y = (f32)g->OffsetY * scale;
 			o->advance = (f32)g->AdvanceX * scale;
 			o->cluster = 0;
-			if (kbts_ShapeGetShapeCodepoint(sc->ctx, g->UserIdOrCodepointIndex, &cp)) o->cluster = (u32)cp.UserId;
+			o->grapheme = 1;
+			if (kbts_ShapeGetShapeCodepoint(sc->ctx, g->UserIdOrCodepointIndex, &cp))
+			{
+				o->cluster = (u32)cp.UserId;
+				o->grapheme = (cp.BreakFlags & KBTS_BREAK_FLAG_GRAPHEME) != 0;
+			}
 			if (g->Id == 0) layout->notdef_count++;
 			if (o->rtl) layout->has_rtl = 1;
 			pen += o->advance;
@@ -445,8 +453,8 @@ RGINLINE int rg_text_layout_caret_group_next(const RgTextLayout* layout, RgTextC
 	for (it->i++; it->i < run_len; it->i++)
 	{
 		g = &layout->glyphs[it->rtl ? it->run_end - 1 - it->i : it->run_begin + it->i];
-		if (g->advance > 0.0f && g->cluster > max_cluster) break; /* a new group starts here */
-		if (g->cluster < out->start) out->start = g->cluster;      /* a reordered sign before its base */
+		if (g->grapheme && g->cluster > max_cluster) break;   /* a new grapheme starts here */
+		if (g->cluster < out->start) out->start = g->cluster; /* a reordered sign before its base */
 		if (g->cluster > max_cluster) max_cluster = g->cluster;
 		if (g->pen_x < out->left) out->left = g->pen_x;
 		if (g->pen_x + g->advance > out->right) out->right = g->pen_x + g->advance;

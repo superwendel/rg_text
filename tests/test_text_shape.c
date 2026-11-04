@@ -205,12 +205,14 @@ static void test_devanagari_and_thai(void)
 	 * boundaries exist, at the pen extent, never at an inner glyph. */
 	{
 		/* Devanagari ka + vowel sign i (the sign is reordered before its base),
-		 * Arabic beh + fatha (zero-advance mark, RTL), Thai ko kai + mai tho (mark). */
-		static const char* const one_group[] = {"\xE0\xA4\x95\xE0\xA4\xBF", "\xD8\xA8\xD9\x8E", "\xE0\xB8\x81\xE0\xB9\x89"};
-		static const char* const names[] = {"devanagari ki", "arabic beh+fatha", "thai ko kai+mai tho"};
-		static const u32 lens[] = {6, 4, 6};
+		 * Arabic beh + fatha (zero-advance mark, RTL), Thai ko kai + mai tho (mark),
+		 * Devanagari ka + vowel sign aa (a spacing sign with its own advance). */
+		static const char* const one_group[] = {"\xE0\xA4\x95\xE0\xA4\xBF", "\xD8\xA8\xD9\x8E", "\xE0\xB8\x81\xE0\xB9\x89",
+		                                        "\xE0\xA4\x95\xE0\xA4\xBE"};
+		static const char* const names[] = {"devanagari ki", "arabic beh+fatha", "thai ko kai+mai tho", "devanagari kaa"};
+		static const u32 lens[] = {6, 4, 6, 6};
 		u32 t;
-		for (t = 0; t < 3; t++)
+		for (t = 0; t < 4; t++)
 		{
 			RgTextCaretGroupIter it;
 			RgTextCaretGroup grp;
@@ -218,6 +220,7 @@ static void test_devanagari_and_thai(void)
 			u32 groups = 0, k;
 			TEST_ASSERT(shape(one_group[t], 14.0f, &l), names[t]);
 			TEST_ASSERT(l.count == 2 && l.notdef_count == 0 && l.width > 4.0f, "two glyphs");
+			TEST_ASSERT(l.glyphs[0].grapheme + l.glyphs[1].grapheme == 1, "exactly one glyph starts a grapheme");
 			memset(&it, 0, sizeof it);
 			while (rg_text_layout_caret_group_next(&l, &it, &grp)) groups++;
 			TEST_ASSERT(groups == 1 && grp.start == 0 && grp.left == 0.0f && grp.right == l.width, "one caret group spanning the run");
@@ -236,6 +239,27 @@ static void test_devanagari_and_thai(void)
 			                rg_text_layout_hit_test(&l, -3.0f) == (l.has_rtl ? lens[t] : 0u) &&
 			                rg_text_layout_hit_test(&l, l.width + 3.0f) == (l.has_rtl ? 0u : lens[t]),
 			            "hits map to the group's two boundaries only");
+		}
+		/* Two graphemes with a spacing sign in the first: kaa + ka has exactly two
+		 * caret positions besides the ends, both at pen edges. */
+		TEST_ASSERT(shape("\xE0\xA4\x95\xE0\xA4\xBE\xE0\xA4\x95", 14.0f, &l), "shape kaa ka");
+		{
+			RgTextCaretGroupIter it;
+			RgTextCaretGroup grp;
+			u32 groups = 0;
+			f32 split = -1.0f;
+			memset(&it, 0, sizeof it);
+			while (rg_text_layout_caret_group_next(&l, &it, &grp))
+			{
+				if (groups == 1) split = grp.left;
+				groups++;
+			}
+			TEST_ASSERT(l.count == 3 && groups == 2 && rg_text_layout_caret_group_end(&l, 0) == 6, "kaa|ka: two groups, the first ends at byte 6");
+			TEST_ASSERT(rg_text_layout_caret_x(&l, 3) == split && rg_text_layout_caret_x(&l, 6) == split &&
+			                split > 4.0f && split < l.width - 4.0f,
+			            "the only inner caret is between the two graphemes");
+			TEST_ASSERT(rg_text_layout_hit_test(&l, split - 0.5f) == 6 && rg_text_layout_hit_test(&l, split + 0.5f) == 6,
+			            "hits around the split return byte 6, never byte 3");
 		}
 		/* The same groups inside a word: namaste has a conjunct and a vowel sign;
 		 * every caret position is a group boundary and they are monotonic. */
