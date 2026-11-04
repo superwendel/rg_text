@@ -339,6 +339,33 @@ static void test_fallback_cjk_emoji(void)
 		TEST_ASSERT(l.notdef_count == 2 && l.count == 2 && l.glyphs[0].glyph == 0, "two notdef reported (DirectWrite: 0 0)");
 		rg_text_shape_utf8(&shaper, &set, "x", 1, 14.0f, &scratch, &l); /* rebind the main set */
 	}
+	/* Grapheme starts (UAX #29) that kb 2.28g gets wrong; third_party/kb/README.md has the
+	 * patch. With Segoe UI alone every codepoint is its own glyph, so the grapheme flags
+	 * are all that join a sequence: a ZWJ chain (family) is one grapheme, and after a
+	 * consonant + virama the next grapheme keeps its own rules (emoji ZWJ, Hangul L V). */
+	{
+		static const char* const texts[] = {
+		    "\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7\xE2\x80\x8D\xF0\x9F\x91\xA6",
+		    "\xE0\xA4\x95\xE0\xA5\x8D\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x91\xA7",
+		    "\xE0\xA4\x95\xE0\xA5\x8D\xE1\x84\x80\xE1\x85\xA1"};
+		static const char* const names[] = {"family is one grapheme", "ka+virama | woman ZWJ girl", "ka+virama | Hangul L V"};
+		static const u32 starts[] = {1u, 1u | (1u << 6), 1u | (1u << 6)}; /* bit b: a grapheme starts at byte b */
+		RgTextFontSet only;
+		u32 t;
+		memset(&only, 0, sizeof only);
+		rg_text_font_set_add(&only, &segoe);
+		for (t = 0; t < 3; t++)
+		{
+			u32 k, got = 0;
+			TEST_ASSERT(rg_text_shape_utf8(&shaper, &only, texts[t], strlen(texts[t]), 14.0f, &scratch, &l), names[t]);
+			for (k = 0; k < l.count; k++)
+				if (l.glyphs[k].grapheme) got |= 1u << l.glyphs[k].cluster;
+			TEST_ASSERT(got == starts[t], names[t]);
+		}
+		rg_text_shape_utf8(&shaper, &set, "x", 1, 14.0f, &scratch, &l); /* rebind the main set */
+		TEST_ASSERT(shape(texts[0], 14.0f, &l) && rg_text_layout_caret_group_end(&l, 0) == 25u,
+		            "with the emoji face the family is still one caret group (0..25)");
+	}
 	TEST_PASS();
 }
 
