@@ -21,9 +21,11 @@ Upstream v2.28g and v2.29 (abe50a2) have the same table. Two kinds of cell lose 
   every other column has), so ka + virama + Hangul L V split L from V, and
   ka + virama + woman ZWJ girl split at the ZWJ.
 
-Checked with kb's break iterator against Unicode's GraphemeBreakTest.txt: 16.0.0
-passes all 1093 lines before and after; 17.0.0 differs on the same 9 lines before
-and after (rules added in Unicode 17: Myanmar, Balinese and Khmer conjuncts, and
-U+2701). Eleven extra lines covering ZWJ chains and every patched cell fail
-before and pass after. tests/test_text_shape.c covers three of them through
-rg_text_shape. Drop the patch when upstream fixes the table.
+`build.bat test_kb_graphemes` (part of `build.bat test`) runs kb's break iterator
+over tests/data/GraphemeBreakTest-16.0.0.txt (Unicode's conformance file for the
+version kb implements; all 1093 lines pass before and after the patch) and eleven
+extra lines covering ZWJ chains and every patched cell, which fail before and pass
+after. Against 17.0.0 kb differs on the same 9 lines before and after (rules added
+in Unicode 17: Myanmar, Balinese and Khmer conjuncts, and U+2701); pass that file
+as the test's argument to see them. tests/test_text_shape.c covers three of the
+extra cases through rg_text_shape. Drop the patch when upstream fixes the table.

@@ -22,6 +22,7 @@ if /I "%TARGET%"=="test_ci" goto test_ci
 if /I "%TARGET%"=="test_release" goto test_release
 if /I "%TARGET%"=="test_text" goto test_text
 if /I "%TARGET%"=="test_text_shape" goto test_text_shape
+if /I "%TARGET%"=="test_kb_graphemes" goto test_kb_graphemes
 if /I "%TARGET%"=="test_text_raster" goto test_text_raster
 if /I "%TARGET%"=="test_gpu" goto test_gpu
 if /I "%TARGET%"=="test_gpu_compile" goto test_gpu_compile
@@ -155,6 +156,9 @@ if not errorlevel 0 exit /b 1
 call "%~f0" test_text_shape
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
+call "%~f0" test_kb_graphemes
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
 call "%~f0" test_text_raster
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
@@ -241,6 +245,23 @@ cl /nologo /std:c11 /W4 /WX /O2 /utf-8 /D_CRT_SECURE_NO_WARNINGS /I "%RG_CORE_DI
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 test_text_shape.exe
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+exit /b 0
+
+:test_kb_graphemes
+call :ensure_compiler
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+call :validate_core
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+
+echo Building kb grapheme conformance test (Unicode GraphemeBreakTest 16.0.0 plus patched-cell lines)...
+cl /nologo /std:c11 /W4 /WX /O2 /utf-8 /D_CRT_SECURE_NO_WARNINGS /I "%RG_CORE_DIR%\src" /I src tests\test_kb_graphemes.c /Fe:test_kb_graphemes.exe
+if errorlevel 1 exit /b 1
+if not errorlevel 0 exit /b 1
+test_kb_graphemes.exe
 if errorlevel 1 exit /b 1
 if not errorlevel 0 exit /b 1
 exit /b 0
