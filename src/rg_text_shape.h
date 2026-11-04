@@ -132,9 +132,8 @@ typedef struct RgTextCaretGroup
 
 typedef struct RgTextCaretGroupIter
 {
-	u32 run_begin, run_end; // visual glyph range of the current direction run
-	u32 i;                  // next logical index within the run
-	int rtl;
+	u32 next;  // lower bound (source byte) of the next group
+	int done;
 } RgTextCaretGroupIter;
 
 typedef struct RgTextLayout
@@ -174,11 +173,11 @@ RGINLINE void rg_text_shape_context_reset(RgTextShapeContext* sc);
 RGINLINE int rg_text_shape_utf8(RgTextShapeContext* sc, const RgTextFontSet* set, const char* utf8, size_t len, f32 px_size,
                                 RgArena* out, RgTextLayout* layout);
 
-/** Caret groups in logical order (a zeroed iterator starts). Within each
- *  direction run, glyphs are walked in logical order and a new group starts at
- *  a glyph whose codepoint begins a grapheme cluster and whose cluster is above
- *  every cluster seen so far; anything else (reordered or spacing vowel signs,
- *  marks, further glyphs of the same codepoint) joins the current group. */
+/** Caret groups in logical order (a zeroed iterator starts). A group is the
+ *  source byte range from one grapheme start to the next (the grapheme starts
+ *  are the clusters of glyphs flagged by kb); every glyph whose cluster falls
+ *  in the range belongs to it wherever it was reordered visually. One scan per
+ *  group; layouts are line-sized. */
 RGINLINE int rg_text_layout_caret_group_next(const RgTextLayout* layout, RgTextCaretGroupIter* it, RgTextCaretGroup* out);
 /** Byte offset just past the group starting at `start`: the next group start,
  *  else the source length. */
@@ -430,35 +429,33 @@ RGINLINE int rg_text_shape_utf8(RgTextShapeContext* sc, const RgTextFontSet* set
 
 RGINLINE int rg_text_layout_caret_group_next(const RgTextLayout* layout, RgTextCaretGroupIter* it, RgTextCaretGroup* out)
 {
-	const RgTextShapedGlyph* g;
-	u32 run_len, max_cluster;
-	if (it->i >= it->run_end - it->run_begin)
+	u32 lower = it->next, upper = UINT32_MAX, i;
+	int found = 0;
+	if (it->done) return 0;
+	/* The group is [lower, upper): upper is the smallest grapheme start above
+	 * lower (the first group's lower bound is 0, so it also takes any glyph
+	 * below the first flagged cluster). */
+	for (i = 0; i < layout->count; i++)
 	{
-		/* Next direction run in visual order. */
-		if (it->run_end >= layout->count) return 0;
-		it->run_begin = it->run_end;
-		it->rtl = layout->glyphs[it->run_begin].rtl;
-		it->run_end = it->run_begin + 1;
-		while (it->run_end < layout->count && layout->glyphs[it->run_end].rtl == it->rtl) it->run_end++;
-		it->i = 0;
+		const RgTextShapedGlyph* g = &layout->glyphs[i];
+		if (g->grapheme && g->cluster > lower && g->cluster < upper) upper = g->cluster;
 	}
-	run_len = it->run_end - it->run_begin;
-	/* Logical order: visual order for LTR runs, reversed for RTL runs. */
-	g = &layout->glyphs[it->rtl ? it->run_end - 1 - it->i : it->run_begin + it->i];
-	out->start = g->cluster;
-	out->left = g->pen_x;
-	out->right = g->pen_x + g->advance;
-	out->rtl = it->rtl;
-	max_cluster = g->cluster;
-	for (it->i++; it->i < run_len; it->i++)
+	out->left = out->right = 0.0f;
+	out->rtl = 0;
+	out->start = lower;
+	for (i = 0; i < layout->count; i++)
 	{
-		g = &layout->glyphs[it->rtl ? it->run_end - 1 - it->i : it->run_begin + it->i];
-		if (g->grapheme && g->cluster > max_cluster) break;   /* a new grapheme starts here */
-		if (g->cluster < out->start) out->start = g->cluster; /* a reordered sign before its base */
-		if (g->cluster > max_cluster) max_cluster = g->cluster;
-		if (g->pen_x < out->left) out->left = g->pen_x;
-		if (g->pen_x + g->advance > out->right) out->right = g->pen_x + g->advance;
+		const RgTextShapedGlyph* g = &layout->glyphs[i];
+		if (g->cluster < lower || g->cluster >= upper) continue;
+		if (!found || g->cluster < out->start) out->start = g->cluster;
+		if (!found || g->pen_x < out->left) out->left = g->pen_x;
+		if (!found || g->pen_x + g->advance > out->right) out->right = g->pen_x + g->advance;
+		out->rtl |= g->rtl;
+		found = 1;
 	}
+	if (upper == UINT32_MAX) it->done = 1;
+	else it->next = upper;
+	if (!found) return rg_text_layout_caret_group_next(layout, it, out); /* an empty range (no glyphs): skip it */
 	return 1;
 }
 

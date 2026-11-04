@@ -261,6 +261,30 @@ static void test_devanagari_and_thai(void)
 			TEST_ASSERT(rg_text_layout_hit_test(&l, split - 0.5f) == 6 && rg_text_layout_hit_test(&l, split + 0.5f) == 6,
 			            "hits around the split return byte 6, never byte 3");
 		}
+		/* Two reordered graphemes side by side: ki ki. Visually both signs precede
+		 * their bases, so the middle caret (byte 6) must come from source identity. */
+		TEST_ASSERT(shape("\xE0\xA4\x95\xE0\xA4\xBF\xE0\xA4\x95\xE0\xA4\xBF", 14.0f, &l), "shape ki ki");
+		{
+			RgTextCaretGroupIter it;
+			RgTextCaretGroup grp;
+			u32 groups = 0, order_ok = 1;
+			f32 split = -1.0f;
+			memset(&it, 0, sizeof it);
+			while (rg_text_layout_caret_group_next(&l, &it, &grp))
+			{
+				if (groups == 0) order_ok &= grp.start == 0 && grp.left == 0.0f;
+				if (groups == 1) { order_ok &= grp.start == 6 && grp.right == l.width; split = grp.left; }
+				groups++;
+			}
+			TEST_ASSERT(l.count == 4 && groups == 2 && order_ok, "ki|ki: two groups, 0..6 and 6..12");
+			TEST_ASSERT(rg_text_layout_caret_x(&l, 6) == split && split > l.width * 0.4f && split < l.width * 0.6f &&
+			                rg_text_layout_caret_x(&l, 3) == split && rg_text_layout_caret_x(&l, 9) == l.width &&
+			                rg_text_layout_caret_x(&l, 12) == l.width,
+			            "the middle caret is at the midpoint; inner offsets caret after their grapheme");
+			TEST_ASSERT(rg_text_layout_hit_test(&l, split - 0.5f) == 6 && rg_text_layout_hit_test(&l, split + 0.5f) == 6 &&
+			                rg_text_layout_hit_test(&l, 0.5f) == 0 && rg_text_layout_hit_test(&l, l.width - 0.5f) == 12,
+			            "hits map to 0, 6 and 12 only");
+		}
 		/* The same groups inside a word: namaste has a conjunct and a vowel sign;
 		 * every caret position is a group boundary and they are monotonic. */
 		TEST_ASSERT(shape("\xE0\xA4\xA8\xE0\xA4\xAE\xE0\xA4\xB8\xE0\xA5\x8D\xE0\xA4\xA4\xE0\xA5\x87", 16.0f, &l), "shape namaste for carets");
