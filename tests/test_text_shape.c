@@ -201,6 +201,65 @@ static void test_devanagari_and_thai(void)
 	TEST_ASSERT(l.count == 6 && l.glyphs[0].glyph == 85 && l.glyphs[1].glyph == 112 && l.glyphs[5].glyph == 112, "precomposed accents match DirectWrite (85 112 86 88 80 112)");
 	TEST_ASSERT(shape("\xD0\x90\xD1\x80\xD1\x85\xD0\xB8\xD0\xB2", 14.0f, &l), "shape cyrillic");
 	TEST_ASSERT(l.count == 5 && l.glyphs[0].glyph == 487 && l.glyphs[4].glyph == 521, "Cyrillic ids match DirectWrite (487 535 540 527 521)");
+	/* Carets of clusters whose glyphs reorder or carry marks: only the group
+	 * boundaries exist, at the pen extent, never at an inner glyph. */
+	{
+		/* Devanagari ka + vowel sign i (the sign is reordered before its base),
+		 * Arabic beh + fatha (zero-advance mark, RTL), Thai ko kai + mai tho (mark). */
+		static const char* const one_group[] = {"\xE0\xA4\x95\xE0\xA4\xBF", "\xD8\xA8\xD9\x8E", "\xE0\xB8\x81\xE0\xB9\x89"};
+		static const char* const names[] = {"devanagari ki", "arabic beh+fatha", "thai ko kai+mai tho"};
+		static const u32 lens[] = {6, 4, 6};
+		u32 t;
+		for (t = 0; t < 3; t++)
+		{
+			RgTextCaretGroupIter it;
+			RgTextCaretGroup grp;
+			f32 start, end;
+			u32 groups = 0, k;
+			TEST_ASSERT(shape(one_group[t], 14.0f, &l), names[t]);
+			TEST_ASSERT(l.count == 2 && l.notdef_count == 0 && l.width > 4.0f, "two glyphs");
+			memset(&it, 0, sizeof it);
+			while (rg_text_layout_caret_group_next(&l, &it, &grp)) groups++;
+			TEST_ASSERT(groups == 1 && grp.start == 0 && grp.left == 0.0f && grp.right == l.width, "one caret group spanning the run");
+			start = rg_text_layout_caret_x(&l, 0);
+			end = rg_text_layout_caret_x(&l, lens[t]);
+			if (l.has_rtl)
+				TEST_ASSERT(start == l.width && end == 0.0f, "RTL group: start at the right edge, end at the left edge");
+			else
+				TEST_ASSERT(start == 0.0f && end == l.width, "LTR group: start at the left edge, end at the right edge");
+			TEST_ASSERT(rg_text_layout_caret_x(&l, 3) == end, "an offset inside the group carets after it");
+			for (k = 0; k < l.count; k++)
+				TEST_ASSERT(l.glyphs[k].cluster == 0 || rg_text_layout_caret_x(&l, l.glyphs[k].cluster) == end,
+				            "a mark's cluster start is no caret position");
+			TEST_ASSERT(rg_text_layout_hit_test(&l, 0.5f) == (l.has_rtl ? lens[t] : 0u) &&
+			                rg_text_layout_hit_test(&l, l.width - 0.5f) == (l.has_rtl ? 0u : lens[t]) &&
+			                rg_text_layout_hit_test(&l, -3.0f) == (l.has_rtl ? lens[t] : 0u) &&
+			                rg_text_layout_hit_test(&l, l.width + 3.0f) == (l.has_rtl ? 0u : lens[t]),
+			            "hits map to the group's two boundaries only");
+		}
+		/* The same groups inside a word: namaste has a conjunct and a vowel sign;
+		 * every caret position is a group boundary and they are monotonic. */
+		TEST_ASSERT(shape("\xE0\xA4\xA8\xE0\xA4\xAE\xE0\xA4\xB8\xE0\xA5\x8D\xE0\xA4\xA4\xE0\xA5\x87", 16.0f, &l), "shape namaste for carets");
+		{
+			RgTextCaretGroupIter it;
+			RgTextCaretGroup grp;
+			f32 last_x = -1.0f;
+			u32 last_start = 0, groups = 0;
+			memset(&it, 0, sizeof it);
+			while (rg_text_layout_caret_group_next(&l, &it, &grp))
+			{
+				f32 cx = rg_text_layout_caret_x(&l, grp.start);
+				TEST_ASSERT(cx == grp.left && cx > last_x && (groups == 0 || grp.start > last_start), "LTR group carets increase with the offset");
+				TEST_ASSERT(rg_text_layout_hit_test(&l, grp.left + 0.5f) == grp.start &&
+				                rg_text_layout_hit_test(&l, grp.right - 0.5f) == rg_text_layout_caret_group_end(&l, grp.start),
+				            "hits inside a group return its boundaries");
+				last_x = cx;
+				last_start = grp.start;
+				groups++;
+			}
+			TEST_ASSERT(groups >= 2 && groups <= 4 && rg_text_layout_caret_x(&l, 18) == l.width, "namaste has 2-4 caret groups ending at the width");
+		}
+	}
 	TEST_PASS();
 }
 

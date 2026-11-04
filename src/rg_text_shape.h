@@ -113,8 +113,27 @@ typedef struct RgTextShapedGlyph
 	f32 x;        // pen position + GPOS offset, pixels, relative to the layout origin
 	f32 y;        // positive up
 	f32 advance;  // pixels
+	f32 pen_x;    // pen position before this glyph (x without the GPOS offset); caret edges use it
 	u32 cluster;  // byte offset of the source codepoint in the UTF-8 input
 } RgTextShapedGlyph;
+
+/* A caret group: the glyphs between two caret positions. kb clusters are per
+ * codepoint, but a vowel sign reordered before its base or a zero-advance mark
+ * is not a caret position; groups merge them with their base. */
+typedef struct RgTextCaretGroup
+{
+	u32 start;   // first source byte of the group
+	f32 left;    // pen extent, pixels
+	f32 right;
+	int rtl;
+} RgTextCaretGroup;
+
+typedef struct RgTextCaretGroupIter
+{
+	u32 run_begin, run_end; // visual glyph range of the current direction run
+	u32 i;                  // next logical index within the run
+	int rtl;
+} RgTextCaretGroupIter;
 
 typedef struct RgTextLayout
 {
@@ -153,13 +172,21 @@ RGINLINE void rg_text_shape_context_reset(RgTextShapeContext* sc);
 RGINLINE int rg_text_shape_utf8(RgTextShapeContext* sc, const RgTextFontSet* set, const char* utf8, size_t len, f32 px_size,
                                 RgArena* out, RgTextLayout* layout);
 
+/** Caret groups in logical order (a zeroed iterator starts). Within each
+ *  direction run, glyphs are walked in logical order and a new group starts at
+ *  a positive-advance glyph whose cluster is above every cluster seen so far;
+ *  anything else (reordered signs, marks) joins the current group. */
+RGINLINE int rg_text_layout_caret_group_next(const RgTextLayout* layout, RgTextCaretGroupIter* it, RgTextCaretGroup* out);
+/** Byte offset just past the group starting at `start`: the next group start,
+ *  else the source length. */
+RGINLINE u32 rg_text_layout_caret_group_end(const RgTextLayout* layout, u32 start);
 /** Caret x for a byte offset into the source (0..source_len), in pixels: the
- *  trailing edge of the glyph owning the last byte before the offset (left of
- *  an RTL glyph, right of an LTR one), or the leading edge of the glyph at
- *  offset 0. Offsets inside a ligature cluster land after the cluster. */
+ *  trailing edge of the group owning the last byte before the offset (left of
+ *  an RTL group, right of an LTR one), or the leading edge of the first group
+ *  at offset 0. An offset inside a group carets after that group. */
 RGINLINE f32 rg_text_layout_caret_x(const RgTextLayout* layout, u32 byte_offset);
 /** Source byte offset whose caret is nearest to pixel x (mouse hit testing):
- *  the near edge of the glyph under x, mapped through its direction. */
+ *  the near edge of the group under x, mapped through its direction. */
 RGINLINE u32 rg_text_layout_hit_test(const RgTextLayout* layout, f32 x);
 /** Number of leading glyphs whose right edge stays within `max_width`. */
 RGINLINE u32 rg_text_layout_fit(const RgTextLayout* layout, f32 max_width);
@@ -377,6 +404,7 @@ RGINLINE int rg_text_shape_utf8(RgTextShapeContext* sc, const RgTextFontSet* set
 			o->face = face_index;
 			o->rtl = run.Direction == KBTS_DIRECTION_RTL;
 			o->x = pen + (f32)g->OffsetX * scale;
+			o->pen_x = pen;
 			o->y = (f32)g->OffsetY * scale;
 			o->advance = (f32)g->AdvanceX * scale;
 			o->cluster = 0;
@@ -392,54 +420,94 @@ RGINLINE int rg_text_shape_utf8(RgTextShapeContext* sc, const RgTextFontSet* set
 	return 1;
 }
 
-/* Byte offset just past the cluster that starts at `cluster`: the smallest
- * cluster above it in the layout, else the source length. Glyphs are in visual
- * order, so this is a scan, not an index; layouts are line-sized. */
-RGINLINE u32 rg_text_layout_cluster_end(const RgTextLayout* layout, u32 cluster)
+RGINLINE int rg_text_layout_caret_group_next(const RgTextLayout* layout, RgTextCaretGroupIter* it, RgTextCaretGroup* out)
 {
-	u32 i, end = layout->source_len;
-	for (i = 0; i < layout->count; i++)
+	const RgTextShapedGlyph* g;
+	u32 run_len, max_cluster;
+	if (it->i >= it->run_end - it->run_begin)
 	{
-		u32 c = layout->glyphs[i].cluster;
-		if (c > cluster && c < end) end = c;
+		/* Next direction run in visual order. */
+		if (it->run_end >= layout->count) return 0;
+		it->run_begin = it->run_end;
+		it->rtl = layout->glyphs[it->run_begin].rtl;
+		it->run_end = it->run_begin + 1;
+		while (it->run_end < layout->count && layout->glyphs[it->run_end].rtl == it->rtl) it->run_end++;
+		it->i = 0;
 	}
+	run_len = it->run_end - it->run_begin;
+	/* Logical order: visual order for LTR runs, reversed for RTL runs. */
+	g = &layout->glyphs[it->rtl ? it->run_end - 1 - it->i : it->run_begin + it->i];
+	out->start = g->cluster;
+	out->left = g->pen_x;
+	out->right = g->pen_x + g->advance;
+	out->rtl = it->rtl;
+	max_cluster = g->cluster;
+	for (it->i++; it->i < run_len; it->i++)
+	{
+		g = &layout->glyphs[it->rtl ? it->run_end - 1 - it->i : it->run_begin + it->i];
+		if (g->advance > 0.0f && g->cluster > max_cluster) break; /* a new group starts here */
+		if (g->cluster < out->start) out->start = g->cluster;      /* a reordered sign before its base */
+		if (g->cluster > max_cluster) max_cluster = g->cluster;
+		if (g->pen_x < out->left) out->left = g->pen_x;
+		if (g->pen_x + g->advance > out->right) out->right = g->pen_x + g->advance;
+	}
+	return 1;
+}
+
+RGINLINE u32 rg_text_layout_caret_group_end(const RgTextLayout* layout, u32 start)
+{
+	RgTextCaretGroupIter it;
+	RgTextCaretGroup grp;
+	u32 end = layout->source_len;
+	memset(&it, 0, sizeof it);
+	while (rg_text_layout_caret_group_next(layout, &it, &grp))
+		if (grp.start > start && grp.start < end) end = grp.start;
 	return end;
 }
 
 RGINLINE f32 rg_text_layout_caret_x(const RgTextLayout* layout, u32 byte_offset)
 {
-	const RgTextShapedGlyph* before = NULL; /* glyph with the largest cluster < offset */
-	const RgTextShapedGlyph* at = NULL;     /* glyph starting exactly at the offset */
-	u32 i;
-	for (i = 0; i < layout->count; i++)
+	RgTextCaretGroupIter it;
+	RgTextCaretGroup grp, before, at;
+	int have_before = 0, have_at = 0;
+	memset(&it, 0, sizeof it);
+	memset(&before, 0, sizeof before);
+	memset(&at, 0, sizeof at);
+	while (rg_text_layout_caret_group_next(layout, &it, &grp))
 	{
-		const RgTextShapedGlyph* g = &layout->glyphs[i];
-		if (g->cluster == byte_offset) { if (!at) at = g; }
-		else if (g->cluster < byte_offset && (!before || g->cluster > before->cluster)) before = g;
+		if (grp.start == byte_offset) { at = grp; have_at = 1; }
+		else if (grp.start < byte_offset && (!have_before || grp.start > before.start)) { before = grp; have_before = 1; }
 	}
-	if (before) return before->rtl ? before->x : before->x + before->advance; /* trailing edge */
-	if (at) return at->rtl ? at->x + at->advance : at->x;                      /* leading edge */
+	if (have_before) return before.rtl ? before.left : before.right; /* trailing edge of the previous group */
+	if (have_at) return at.rtl ? at.right : at.left;                  /* leading edge of the first group */
 	return 0.0f;
 }
 
 RGINLINE u32 rg_text_layout_hit_test(const RgTextLayout* layout, f32 x)
 {
-	const RgTextShapedGlyph* g = NULL;
-	u32 i;
-	if (!layout->count) return 0;
-	for (i = 0; i < layout->count; i++)
+	RgTextCaretGroupIter it;
+	RgTextCaretGroup grp, hit, leftmost, rightmost;
+	int found = 0, any = 0, right_edge;
+	memset(&it, 0, sizeof it);
+	memset(&hit, 0, sizeof hit);
+	leftmost = rightmost = hit;
+	while (rg_text_layout_caret_group_next(layout, &it, &grp))
 	{
-		g = &layout->glyphs[i];
-		if (x < g->x + g->advance) break;
+		if (!found && grp.left <= x && x < grp.right) { hit = grp; found = 1; }
+		if (!any || grp.left < leftmost.left) leftmost = grp;
+		if (!any || grp.right > rightmost.right) rightmost = grp;
+		any = 1;
 	}
-	if (i == layout->count) g = &layout->glyphs[layout->count - 1]; /* past the end: its right edge */
+	if (!any) return 0;
+	if (found) right_edge = x >= (hit.left + hit.right) * 0.5f;
+	else
 	{
-		/* The near edge: left or right of the glyph; the direction says which
-		 * byte offset that edge is. */
-		int right_edge = i == layout->count || x >= g->x + g->advance * 0.5f;
-		int start_edge = right_edge == g->rtl; /* RTL glyphs start on the right */
-		return start_edge ? g->cluster : rg_text_layout_cluster_end(layout, g->cluster);
+		/* Outside the line: the nearest end. */
+		hit = x < leftmost.left ? leftmost : rightmost;
+		right_edge = x >= leftmost.left;
 	}
+	/* The near edge of the group; its direction says which offset that edge is. */
+	return (right_edge == hit.rtl) ? hit.start : rg_text_layout_caret_group_end(layout, hit.start);
 }
 
 RGINLINE u32 rg_text_layout_fit(const RgTextLayout* layout, f32 max_width)
