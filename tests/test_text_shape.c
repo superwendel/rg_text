@@ -369,6 +369,33 @@ static void test_fallback_cjk_emoji(void)
 	TEST_PASS();
 }
 
+/* Where the direction changes an offset has two places on screen. In "a" + seen
+ * lam + "b" the Arabic run starts at byte 1: caret_x(1) is the trailing edge of
+ * "a" (the run's left end), but a click at the run's right end also hits byte 1,
+ * and hit_caret reports that edge, so the caret can be drawn where the user clicked. */
+static void test_hit_caret(void)
+{
+	RgTextLayout l;
+	f32 a_right, run_right, edge = -1.0f;
+	u32 i, hit;
+	scratch.used = 0;
+	TEST_ASSERT(shape("a\xD8\xB3\xD9\x84" "b", 14.0f, &l), "shape a + Arabic + b");
+	TEST_ASSERT(l.has_rtl && l.count == 4, "four glyphs, one RTL run");
+	a_right = l.glyphs[0].pen_x + l.glyphs[0].advance;
+	run_right = a_right;
+	for (i = 0; i < l.count; i++)
+		if (l.glyphs[i].rtl && l.glyphs[i].pen_x + l.glyphs[i].advance > run_right) run_right = l.glyphs[i].pen_x + l.glyphs[i].advance;
+	TEST_ASSERT(run_right > a_right + 4.0f, "the run has width");
+	TEST_ASSERT(rg_text_layout_caret_x(&l, 1) == a_right, "caret_x(1) is the left end of the run");
+	hit = rg_text_layout_hit_caret(&l, run_right - 0.5f, &edge);
+	TEST_ASSERT(hit == 1u && edge == run_right, "a hit at the run's right end is byte 1, drawn at that end");
+	hit = rg_text_layout_hit_caret(&l, a_right + 0.5f, &edge);
+	TEST_ASSERT(hit == 5u && edge == a_right, "a hit at the run's left end is its logical end, drawn there");
+	TEST_ASSERT(rg_text_layout_hit_test(&l, run_right - 0.5f) == 1u, "hit_test agrees");
+	TEST_ASSERT(rg_text_layout_hit_caret(&l, l.width + 5.0f, &edge) == 6u && edge == l.width, "past the end: the end, at the width");
+	TEST_PASS();
+}
+
 static void test_copy_out_and_queries(void)
 {
 	/* Two layouts shaped back to back stay distinct: results were copied out of kb's reused memory. */
@@ -454,6 +481,7 @@ int main(void)
 	test_arabic();
 	test_devanagari_and_thai();
 	test_fallback_cjk_emoji();
+	test_hit_caret();
 	test_copy_out_and_queries();
 	test_timing();
 	printf("%d passed, %d failed\n", g_tests_passed, g_tests_failed);

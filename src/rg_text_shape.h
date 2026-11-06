@@ -190,6 +190,10 @@ RGINLINE f32 rg_text_layout_caret_x(const RgTextLayout* layout, u32 byte_offset)
 /** Source byte offset whose caret is nearest to pixel x (mouse hit testing):
  *  the near edge of the group under x, mapped through its direction. */
 RGINLINE u32 rg_text_layout_hit_test(const RgTextLayout* layout, f32 x);
+/** rg_text_layout_hit_test, and the x of the edge it chose. Where the direction
+ *  changes an offset has two places on screen; caret_x gives one, and this is
+ *  the one under x, for drawing the caret where the user clicked. */
+RGINLINE u32 rg_text_layout_hit_caret(const RgTextLayout* layout, f32 x, f32* out_caret_x);
 /** Number of leading glyphs whose right edge stays within `max_width`. */
 RGINLINE u32 rg_text_layout_fit(const RgTextLayout* layout, f32 max_width);
 /** Line height in pixels for a face at a size (ascent - descent + gap). */
@@ -490,6 +494,11 @@ RGINLINE f32 rg_text_layout_caret_x(const RgTextLayout* layout, u32 byte_offset)
 
 RGINLINE u32 rg_text_layout_hit_test(const RgTextLayout* layout, f32 x)
 {
+	return rg_text_layout_hit_caret(layout, x, NULL);
+}
+
+RGINLINE u32 rg_text_layout_hit_caret(const RgTextLayout* layout, f32 x, f32* out_caret_x)
+{
 	RgTextCaretGroupIter it;
 	RgTextCaretGroup grp, hit, leftmost, rightmost;
 	int found = 0, any = 0, right_edge;
@@ -503,6 +512,7 @@ RGINLINE u32 rg_text_layout_hit_test(const RgTextLayout* layout, f32 x)
 		if (!any || grp.right > rightmost.right) rightmost = grp;
 		any = 1;
 	}
+	if (out_caret_x) *out_caret_x = 0.0f;
 	if (!any) return 0;
 	if (found) right_edge = x >= (hit.left + hit.right) * 0.5f;
 	else
@@ -512,6 +522,7 @@ RGINLINE u32 rg_text_layout_hit_test(const RgTextLayout* layout, f32 x)
 		right_edge = x >= leftmost.left;
 	}
 	/* The near edge of the group; its direction says which offset that edge is. */
+	if (out_caret_x) *out_caret_x = right_edge ? hit.right : hit.left;
 	return (right_edge == hit.rtl) ? hit.start : rg_text_layout_caret_group_end(layout, hit.start);
 }
 
